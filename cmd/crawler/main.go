@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const Version string = "0.0.1"
+
 var (
 	dailyLimit                    int
 	debug, fetchCredits, headless bool
@@ -16,7 +18,7 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:          "apollo-cr",
+	Use:          "apcr",
 	Short:        "Save and extract leads from apollo.io",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -33,6 +35,8 @@ func main() {
 }
 
 func init() {
+	rootCmd.Version = Version
+
 	rootCmd.Flags().
 		StringVarP(&input, "input", "i", "", "path to input file containing apollo accounts")
 	rootCmd.Flags().
