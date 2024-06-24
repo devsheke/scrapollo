@@ -43,9 +43,9 @@ func init() {
 		StringVarP(&outputDir, "output-dir", "o", "./scrape-results", "specify output directory")
 
 	rootCmd.Flags().
-		IntVar(&dailyLimit, "daily-limit", 500, "daily save limit (different from scrape limit)")
+		IntVarP(&dailyLimit, "daily-limit", "d", 500, "daily save limit (different from scrape limit)")
 
-	rootCmd.Flags().BoolVarP(&debug, "debug", "d", false, "print debug information")
+	rootCmd.Flags().BoolVar(&debug, "debug", false, "print debugging information")
 	rootCmd.Flags().
 		BoolVarP(&fetchCredits, "fetch-credits", "f", false, "fetch apollo credit usage before scraping")
 	rootCmd.Flags().BoolVarP(&headless, "headless", "H", true, "run chrome in headless mode")
