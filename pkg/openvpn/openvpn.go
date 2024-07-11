@@ -13,15 +13,20 @@ import (
 )
 
 var (
+	// ErrorConfigNotFound indicates that the specified OpenVPN config was not found.
 	ErrorConfigNotFound = errors.New("specified openvpn config not found")
-	ErrorNoVPNProcess   = errors.New("no openvpn processes were found")
+	// ErrorNoVPNProcess indicates that no OpenVPN process in running at the moment.
+	ErrorNoVPNProcess = errors.New("no openvpn processes were found")
 )
 
 type (
+	// ErrorVPNTimeout indicates that OpenVPN took too long.
 	ErrorVPNTimeout struct{ msg string }
-	ErrorVPN        struct{ msg string }
+	// ErrorVPN indicates that the OpenVPN process failed to execute.
+	ErrorVPN struct{ stdout, stderr string }
 )
 
+// NewVPNTimeoutError creates a new instance ErrorVPNTimeout.
 func NewVPNTimeoutError(msg string) error {
 	return ErrorVPNTimeout{msg}
 }
@@ -31,15 +36,18 @@ func (e ErrorVPNTimeout) Error() string {
 }
 
 func (e ErrorVPN) Error() string {
-	return fmt.Sprintf("openvpn failed to run: %s", e.msg)
+	return fmt.Sprintf("openvpn failed to run: stdout: %q; stderr: %q", e.stdout, e.stderr)
 }
 
+// Start starts a new OpenVPN process with the given OpenVPN credentials and configuration.
+// This function also returns an instance of the go representation spawned process and its
+// current status.
 func Start(config, auth string) (*cmd.Cmd, <-chan cmd.Status, error) {
 	log.Debug().Str("config", config).Msg("starting openvpn")
 
 	process := cmd.NewCmdOptions(
 		cmd.Options{Streaming: true},
-		"openvpn",
+		"sudo", "openvpn",
 		"--config",
 		config,
 		"--auth-user-pass",
@@ -51,20 +59,22 @@ func Start(config, auth string) (*cmd.Cmd, <-chan cmd.Status, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	var prevStdout string
+	var stdout []string
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, nil, ErrorVPNTimeout{msg: prevStdout}
+			return nil, nil, ErrorVPNTimeout{msg: strings.Join(stdout, "\n")}
 
-		case stdout := <-process.Stdout:
-			if strings.Contains(stdout, "Initialization Sequence Completed") {
+		case _stdout := <-process.Stdout:
+			if strings.Contains(_stdout, "Initialization Sequence Completed") {
 				return process, status, nil
 			}
-			prevStdout = stdout
+			if _stdout != "" {
+				stdout = append(stdout, _stdout)
+			}
 
 		case stderr := <-process.Stderr:
-			return nil, nil, ErrorVPN{msg: stderr}
+			return nil, nil, ErrorVPN{stdout: strings.Join(stdout, "\n"), stderr: stderr}
 
 		case status := <-status:
 			if err := status.Error; err != nil {
@@ -73,14 +83,18 @@ func Start(config, auth string) (*cmd.Cmd, <-chan cmd.Status, error) {
 
 			stderr := status.Stderr
 			if len(stderr) > 0 {
-				return nil, nil, ErrorVPN{msg: stderr[len(stderr)-1]}
+				return nil, nil, ErrorVPN{
+					stdout: strings.Join(stdout, "\n"),
+					stderr: stderr[len(stderr)-1],
+				}
 			}
 
-			return nil, nil, ErrorVPN{msg: prevStdout}
+			return nil, nil, ErrorVPN{stdout: strings.Join(stdout, "\n")}
 		}
 	}
 }
 
+// Stop kills the existing OpenVPN process.
 func Stop(process *cmd.Cmd) error {
 	log.Debug().Msg("stopping openvpn")
 
@@ -110,6 +124,7 @@ func Stop(process *cmd.Cmd) error {
 	return nil
 }
 
+// Restart stops then starts a new OpenVPN process with the specified credentials and configuration.
 func Restart(process *cmd.Cmd, config, auth string) (*cmd.Cmd, <-chan cmd.Status, error) {
 	if err := Stop(process); err != nil && err != ErrorNoVPNProcess {
 		return nil, nil, err
