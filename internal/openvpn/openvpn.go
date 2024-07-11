@@ -13,16 +13,23 @@ import (
 	"github.com/shadowbizz/apollo-crawler/pkg/openvpn"
 )
 
-var ErrorConfigsNotFound = errors.New("no openvpn configs were found")
+var (
+	// ErrorConfigsNotFound indicates that no openvpn configuration files were found in the specified path.
+	ErrorConfigsNotFound = errors.New("no openvpn configs were found")
+	// ErrorNoUnusedConfigs indicates that all given configurations have been used previously.
+	ErrorNoUnusedConfigs = errors.New("no unused openvpn configs were found")
+)
 
+// OpenVPN represents an instance of an OpenVPN process.
 type OpenVPN struct {
 	process         *cmd.Cmd
 	status          <-chan cmd.Status
 	args, auth, dir string
-	configs         []string
+	Configs         []string
 	used            map[string]struct{}
 }
 
+// NewVPN creates a new instane of OpenVPN.
 func NewVPN(configs, auth, args string) (*OpenVPN, error) {
 	_configs, err := loadConfigs(configs)
 	if err != nil {
@@ -31,7 +38,7 @@ func NewVPN(configs, auth, args string) (*OpenVPN, error) {
 	o := &OpenVPN{
 		args:    args,
 		auth:    auth,
-		configs: _configs,
+		Configs: _configs,
 		dir:     configs,
 		used:    make(map[string]struct{}),
 	}
@@ -62,8 +69,9 @@ func (o *OpenVPN) SetUsed(configs []string) {
 	}
 }
 
+// Start starts a new OpenVPN process.
 func (o *OpenVPN) Start(config string) error {
-	if !slices.Contains(o.configs, config) {
+	if !slices.Contains(o.Configs, config) {
 		return openvpn.ErrorConfigNotFound
 	}
 	config = filepath.Join(o.dir, config)
@@ -74,10 +82,12 @@ func (o *OpenVPN) Start(config string) error {
 	return err
 }
 
+// Stop stops the OpenVPN process if it is running.
 func (o *OpenVPN) Stop() error {
 	return openvpn.Stop(o.process)
 }
 
+// Restart restarts the OpenVPN process with the specified configuration file.
 func (o *OpenVPN) Restart(config string) error {
 	var err error
 	o.process, o.status, err = openvpn.Restart(o.process, config, o.auth)
@@ -85,11 +95,22 @@ func (o *OpenVPN) Restart(config string) error {
 	return err
 }
 
-func (o *OpenVPN) filterUnused() []string {
-	configs := make([]string, 0, len(o.configs))
+// UpdateUsed marks the given OpenVPN configuration file as used.
+func (o *OpenVPN) UpdateUsed(config string) {
+	o.used[config] = struct{}{}
+}
 
-	for _, config := range o.configs {
-		if _, ok := o.used[config]; !ok {
+// ConfigIsUsed returns true if the given OpenVPN configuration file has been used.
+func (o *OpenVPN) ConfigIsUsed(config string) bool {
+	_, used := o.used[config]
+	return used
+}
+
+func (o *OpenVPN) filterUnused() []string {
+	configs := make([]string, 0, len(o.Configs))
+
+	for _, config := range o.Configs {
+		if !o.ConfigIsUsed(config) {
 			configs = append(configs, config)
 		}
 	}
@@ -101,10 +122,19 @@ func (o *OpenVPN) filterUnused() []string {
 	return configs
 }
 
+// Backup starts a new OpenVPN process with a random unused OpenVPN configuration file and returns
+// the newly used configuration if successful. It returns ErrorNoUnusedConfigs if all given
+// configurations have been used.
+//
+// # NOTE: This method should be used when the Start method fails.
 func (o *OpenVPN) Backup() (string, error) {
 	log.Debug().Msg("fetching backup config since previous failed")
 
 	unused := o.filterUnused()
+	if len(unused) < 1 {
+		return "", ErrorNoUnusedConfigs
+	}
+
 	usedCache := make(map[int]int)
 
 	for retries := 0; retries < 10; retries++ {
