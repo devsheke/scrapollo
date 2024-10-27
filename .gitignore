@@ -1,0 +1,6 @@
+# MacOS specific files.
+.DS_Store
+
+# direnv files.
+.direnv
+.envrc
