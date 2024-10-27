@@ -6,7 +6,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/shadowbizz/apollo-crawler/internal/models"
+	"github.com/shadowbizz/apollo-crawler/internal/io"
 	"github.com/shadowbizz/apollo-crawler/internal/openvpn"
 	"github.com/shadowbizz/apollo-crawler/internal/queue"
 	"github.com/spf13/cobra"
@@ -27,7 +27,7 @@ var rootCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		initLogger(debug)
 
-		accounts, err := models.ReadAccountsFile(input)
+		accounts, err := io.ReadAccountsFile(input)
 		exitOnError(err)
 
 		vpn, err := openvpn.NewVPN(vpnConfigs, vpnAuth, vpnArgs)
