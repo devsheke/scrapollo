@@ -1,4 +1,4 @@
-package models
+package io
 
 import (
 	"encoding/json"
@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/gocarina/gocsv"
+	"github.com/shadowbizz/apollo-crawler/internal/models"
 )
 
 // These constants are used to decide the output format.
@@ -15,21 +16,6 @@ const (
 	CSVOutput int = iota
 	JSONOutput
 )
-
-// Lead represents an apollo.io lead.
-type Lead struct {
-	Name      string   `json:"name"      csv:"name"`
-	Title     string   `json:"title"     csv:"title"`
-	Company   string   `json:"company"   csv:"company"`
-	Location  string   `json:"location"  csv:"location"`
-	Employees string   `json:"employees" csv:"employees"`
-	Phone     string   `json:"phone"     csv:"phone"`
-	Industry  string   `json:"industry"  csv:"industry"`
-	Keywords  string   `json:"keywords"  csv:"keywords"`
-	Email     []string `json:"email"     csv:"email"`
-	Links     []string `json:"links"     csv:"links"`
-	Linkedin  []string `json:"linkedin"  csv:"linkedin"`
-}
 
 func ExtensionFromOutputType(o int) (string, error) {
 	switch o {
@@ -78,4 +64,63 @@ func saveToJSON(records any, file string) error {
 	}
 
 	return os.WriteFile(file, b, 0644)
+}
+
+// ReadAccountsFile parses a CSV or JSON file containing apollo.io
+// account credentials and other data which corresponds to the
+// ApolloAccount type.
+func ReadAccountsFile(file string) ([]*models.ApolloAccount, error) {
+	ext := filepath.Ext(file)
+
+	var records []*models.ApolloAccount
+	var err error
+
+	switch ext {
+	case ".json":
+		records, err = readFromJSON(file)
+	case ".csv":
+		records, err = readFromCSV(file)
+	default:
+		return nil, errors.New("unknown input file format")
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	for _, record := range records {
+		if record.Timeout == nil {
+			record.Timeout = &models.Time{}
+		}
+		if record.CreditRefresh == nil {
+			record.Timeout = &models.Time{}
+		}
+	}
+
+	return records, nil
+}
+
+func readFromCSV(file string) ([]*models.ApolloAccount, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var records []*models.ApolloAccount
+	err = gocsv.UnmarshalFile(f, &records)
+
+	return records, err
+}
+
+func readFromJSON(file string) ([]*models.ApolloAccount, error) {
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+
+	var records []*models.ApolloAccount
+	err = json.Unmarshal(b, &records)
+
+	return records, err
 }

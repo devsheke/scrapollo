@@ -9,6 +9,7 @@ import (
 
 	"github.com/chromedp/chromedp"
 	"github.com/shadowbizz/apollo-crawler/internal/actions"
+	"github.com/shadowbizz/apollo-crawler/internal/io"
 	"github.com/shadowbizz/apollo-crawler/internal/models"
 	"github.com/shadowbizz/apollo-crawler/internal/openvpn"
 )
@@ -39,7 +40,7 @@ type QueueOpt func(q *Queue)
 // CSVOutput sets the output to CSV format.
 func CSVOutput() QueueOpt {
 	return func(q *Queue) {
-		q.outputType = models.CSVOutput
+		q.outputType = io.CSVOutput
 	}
 }
 
@@ -85,7 +86,7 @@ func Headless(b bool) QueueOpt {
 // JSONOutput sets the output to JSON format.
 func JSONOutput() QueueOpt {
 	return func(q *Queue) {
-		q.outputType = models.JSONOutput
+		q.outputType = io.JSONOutput
 	}
 }
 
@@ -152,7 +153,7 @@ func New(accounts []*models.ApolloAccount, opts ...QueueOpt) *Queue {
 		limit:      500,
 		timeout:    30 * time.Second,
 		outputDir:  "apollo-output",
-		outputType: models.CSVOutput,
+		outputType: io.CSVOutput,
 	}
 
 	for _, optFn := range opts {
