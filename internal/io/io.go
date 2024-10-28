@@ -28,7 +28,8 @@ func ExtensionFromOutputType(o int) (string, error) {
 	}
 }
 
-// SaveRecordsToFile saves a slice of records to a file. JSON and CSV formats are supported.
+// SaveRecordsToFile saves a slice of records to a file. JSON and CSV
+// formats are supported.
 func SaveRecordsToFile(records any, file string, outType int) error {
 	if filepath.Ext(file) == "" {
 		ext, err := ExtensionFromOutputType(outType)
