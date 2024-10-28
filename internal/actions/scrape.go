@@ -121,7 +121,7 @@ func randomizeTTE() {
 }
 
 // ScrapePage scrapes all available apollo leads on the current page.
-func ScrapePage(ctx context.Context, timeout time.Duration) ([]*models.Lead, error) {
+func ScrapePage(ctx context.Context, timeout time.Duration) ([]*models.ApolloLead, error) {
 	if err := PollTableData(ctx, timeout); err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func ScrapePage(ctx context.Context, timeout time.Duration) ([]*models.Lead, err
 		return nil, ErrorListEnd
 	}
 
-	leads := make([]*models.Lead, 0, len(rows))
+	leads := make([]*models.ApolloLead, 0, len(rows))
 	for i := range rows {
 		row := rows[i]
 		var columns []*cdp.Node
@@ -148,7 +148,7 @@ func ScrapePage(ctx context.Context, timeout time.Duration) ([]*models.Lead, err
 			return nil, err
 		}
 
-		var lead models.Lead
+		var lead models.ApolloLead
 
 		lead.Email, err = getEmails(ctx, row)
 		handleScrapeError(err, "email")

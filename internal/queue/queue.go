@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/chromedp/chromedp"
 	"github.com/shadowbizz/apollo-crawler/internal/actions"
+	"github.com/shadowbizz/apollo-crawler/internal/io"
 	"github.com/shadowbizz/apollo-crawler/internal/models"
 	"github.com/shadowbizz/apollo-crawler/internal/openvpn"
 )
@@ -26,20 +28,24 @@ type job struct {
 // the scrape jobs alotted to each of the given apollo.io accounts.
 type Queue struct {
 	debug, fetchCredits, headless, saveProgress bool
-	limit, outputType                           int
+	limit                                       int
 	jobs                                        []*job
 	outputDir, tab                              string
 	timeout                                     time.Duration
 	vpn                                         *openvpn.OpenVPN
+	leadWriters                                 []io.LeadWriter
 }
 
 // QueueOpt is a function which is used to configure the apollo.io scrape Queue.
 type QueueOpt func(q *Queue)
 
 // CSVOutput sets the output to CSV format.
+//
+// # NOTE: Make sure to call this function only after queue.outputDir has been set.
 func CSVOutput() QueueOpt {
 	return func(q *Queue) {
-		q.outputType = models.CSVOutput
+		w := io.NewCSVLeadWriter(q.getOutfileName(".csv"))
+		q.leadWriters = append(q.leadWriters, w)
 	}
 }
 
@@ -83,9 +89,12 @@ func Headless(b bool) QueueOpt {
 }
 
 // JSONOutput sets the output to JSON format.
+//
+// # NOTE: Make sure to call this function only after queue.outputDir has been set.
 func JSONOutput() QueueOpt {
 	return func(q *Queue) {
-		q.outputType = models.JSONOutput
+		w := io.NewJSONLeadWriter(q.getOutfileName(".json"))
+		q.leadWriters = append(q.leadWriters, w)
 	}
 }
 
@@ -149,10 +158,9 @@ func initAccounts(accounts *[]*models.ApolloAccount, vpn *openvpn.OpenVPN) {
 // New instantiates a new Queue instance with the given apollo.io accounts as well as QueueOpts.
 func New(accounts []*models.ApolloAccount, opts ...QueueOpt) *Queue {
 	q := &Queue{
-		limit:      500,
-		timeout:    30 * time.Second,
-		outputDir:  "apollo-output",
-		outputType: models.CSVOutput,
+		limit:     500,
+		timeout:   30 * time.Second,
+		outputDir: "./apollo-output",
 	}
 
 	for _, optFn := range opts {
@@ -217,4 +225,8 @@ func (q *Queue) sendToBack() error {
 	q.enqueueJob(job)
 
 	return nil
+}
+
+func (q *Queue) getOutfileName(ext string) string {
+	return filepath.Join(q.outputDir, "leads-"+""+ext)
 }
