@@ -1,6 +1,11 @@
 package models
 
-import "time"
+import (
+	"math/rand/v2"
+	"time"
+
+	"github.com/brianvoe/gofakeit/v7"
+)
 
 // ApolloLead represents a lead from apollo.io.
 type ApolloLead struct {
@@ -14,7 +19,28 @@ type ApolloLead struct {
 	Keywords  string   `json:"keywords"  csv:"keywords"`
 	Email     []string `json:"email"     csv:"email"`
 	Links     []string `json:"links"     csv:"links"`
-	Linkedin  []string `json:"linkedin"  csv:"linkedin"`
+	LinkedIn  string   `json:"linkedin"  csv:"linkedin"`
+}
+
+// GenerateakeLead generates a fake ApolloLead using random values.
+func GenerateakeLead(faker *gofakeit.Faker) *ApolloLead {
+	numLinks := rand.IntN(5) + 1
+	links := make([]string, numLinks)
+	for i := range numLinks {
+		links[i] = faker.URL()
+	}
+
+	return &ApolloLead{
+		Name:     faker.Name(),
+		Company:  faker.Company(),
+		Title:    faker.JobTitle(),
+		Location: faker.City(),
+		Phone:    faker.Phone(),
+		Email:    []string{faker.Email()},
+		Industry: faker.Comment(),
+		LinkedIn: faker.URL(),
+		Links:    links,
+	}
 }
 
 // ApolloAccount represents an apollo.io user in additon
@@ -30,19 +56,12 @@ type ApolloAccount struct {
 	Timeout       *Time  `csv:"timeout"        json:"timeout"`
 	Target        int    `csv:"target"         json:"target"`
 	Saved         int    `csv:"saved"          json:"saved"`
-	done          bool   `csv:"-"`
-}
-
-// SetDone updates the ApolloAccount scrape status to reflect that
-// all leads have been scraped.
-func (a *ApolloAccount) SetDone() {
-	a.done = true
 }
 
 // IsDone returns true if the ApolloAccount has no more new leads
 // to scrape.
 func (a *ApolloAccount) IsDone() bool {
-	return a.Saved >= a.Target || a.done
+	return a.Saved >= a.Target
 }
 
 // IncSaved increases the amount of saved leads.
