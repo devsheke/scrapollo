@@ -57,14 +57,19 @@ func (q *Queue) _saveProgress() error {
 		accounts[i] = job.account
 	}
 
-	ext, err := io.ExtensionFromOutputType(q.outputType)
+	ext, err := io.ExtensionFromOutputType(io.CSVOutput)
 	if err != nil {
 		return err
 	}
 
-	file := fmt.Sprintf("apollo-scrape-progress%s", ext)
-
-	return io.SaveRecordsToFile(accounts, filepath.Join(q.outputDir, file), q.outputType)
+	return io.SaveRecordsToFile(
+		accounts,
+		filepath.Join(
+			q.outputDir,
+			filepath.Join(q.outputDir, fmt.Sprintf("apollo-scrape-progress%s", ext)),
+		),
+		io.CSVOutput,
+	)
 }
 
 // scrapeJob runs a single isolated task of scraping leads from the url allocated
@@ -122,7 +127,15 @@ func (q *Queue) scrapeJob(job *job) error {
 		}
 		leads = append(leads, _leads...)
 
-		err = io.SaveRecordsToFile(leads, filepath.Join(q.outputDir, job.output), q.outputType)
+		for i := range q.leadWriters {
+			if err := q.leadWriters[i].WriteLeads(leads); err != nil {
+				log.Error().
+					Err(err).
+					Str("kind", q.leadWriters[i].Kind()).
+					Msg("failed to write leads")
+			}
+		}
+
 		if err != nil {
 			retries++
 			lastErr = err
