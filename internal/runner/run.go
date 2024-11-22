@@ -1,4 +1,4 @@
-package queue
+package runner
 
 import (
 	"errors"
@@ -65,10 +65,13 @@ func (b *browserWrapper) close() {
 
 // _saveProgress saves the intermediary state of each ApolloAccount present
 // in the queue.
-func (q *Queue) _saveProgress() error {
-	accounts := make([]*models.ApolloAccount, len(q.jobs))
-	for i, job := range q.jobs {
-		accounts[i] = job.account
+func (q *ScrapeRunner) _saveProgress() error {
+	accounts := make([]*models.ApolloAccount, q.jobs.Len())
+
+	var ptr int
+	for job := range q.jobs.Iter {
+		accounts[ptr] = job.account
+		ptr++
 	}
 
 	ext, err := io.ExtensionFromOutputType(io.CSVOutput)
@@ -86,7 +89,7 @@ func (q *Queue) _saveProgress() error {
 	)
 }
 
-func (q *Queue) scrapeLeads(page *rod.Page, job *job) error {
+func (q *ScrapeRunner) scrapeLeads(page *rod.Page, job *ScrapeJob) error {
 	ext, err := io.ExtensionFromOutputType(q.outputKind)
 	if err != nil {
 		return err
@@ -97,7 +100,7 @@ func (q *Queue) scrapeLeads(page *rod.Page, job *job) error {
 		file = filepath.Join(q.outputDir, job.account.SaveToList+ext)
 	} else {
 
-		file = filepath.Join(q.outputDir, job.output+ext)
+		file = filepath.Join(q.outputDir, job.outputName+ext)
 	}
 
 	var writer io.LeadWriter
@@ -108,7 +111,7 @@ func (q *Queue) scrapeLeads(page *rod.Page, job *job) error {
 		writer = io.NewJSONLeadWriter(file)
 	}
 
-	if err := actions.GoToList(page, job.account.SaveToList, 30*time.Second); err != nil {
+	if err := actions.GoToList(page, job.account.SaveToList, q.timeout); err != nil {
 		return err
 	}
 
@@ -138,7 +141,7 @@ func (q *Queue) scrapeLeads(page *rod.Page, job *job) error {
 	}
 }
 
-func (q *Queue) saveLeads(job *job) (err error) {
+func (q *ScrapeRunner) saveLeads(job *ScrapeJob) (err error) {
 	defer func() {
 		if q.vpn != nil {
 			if err := q.vpn.Stop(); err != nil {
@@ -217,12 +220,12 @@ func (q *Queue) saveLeads(job *job) (err error) {
 			return ErrorNoCredits
 		}
 
-		if job.isDoneToday() {
+		if job.IsDoneForToday(q.limit) {
 			return ErrorDailyLimit
 		}
 
-		if !job.start.IsSome() {
-			job.start.Set(time.Now())
+		if !job.startedAt.IsSome() {
+			job.startedAt.Set(time.Now())
 		}
 
 		numLeads, err := actions.SaveLeadsToList(
@@ -257,21 +260,15 @@ func (q *Queue) saveLeads(job *job) (err error) {
 }
 
 // Run executes the queue of scrape jobs till completion (i.e., no more jobs are available).
-func (q *Queue) Run() error {
+func (r *ScrapeRunner) Run() error {
 	for {
-		job, err := q.front()
-		if err != nil {
+		if r.jobs.IsEmpty() {
 			log.Info().Msg("finished all scraping jobs")
 			break
 		}
 
+		job, _ := r.jobs.Front().Value.(*ScrapeJob)
 		account := job.account
-
-		if account.IsDone() {
-			log.Info().Str("account", account.Email).Msg("scraper job complete")
-			_, _ = q.dequeueJob()
-			continue
-		}
 
 		if account.IsTimedOut() {
 			log.Debug().
@@ -279,32 +276,31 @@ func (q *Queue) Run() error {
 				Time("till", account.Timeout.Get()).
 				Msg("skipping timed out job")
 
-			_ = q.sendToBack()
+			if err := r.jobs.Requeue(); err != nil {
+				return err
+			}
 			continue
 		}
 
-		err = q.saveLeads(job)
+		err := r.saveLeads(job)
 		switch err {
 		case ErrorDailyLimit:
 			log.Warn().Str("account", account.Email).Msg("scraper job daily limit reached")
 			job.account.SetTimeout(24 * time.Hour)
-			if err := q.sendToBack(); err != nil {
+			if err := r.jobs.Requeue(); err != nil {
 				return err
 			}
 
 		case ErrorNoCredits:
 			log.Warn().Str("account", account.Email).Msg("scraper has no more credits left")
 			job.account.SetTimeout(time.Until(job.account.Timeout.Get()))
-			if err := q.sendToBack(); err != nil {
+			if err := r.jobs.Requeue(); err != nil {
 				return err
 			}
 
 		case ErrorTargetReached:
 			log.Info().Str("account", account.Email).Msg("scraper job complete")
-			_, err = q.dequeueJob()
-			if err != nil {
-				return err
-			}
+			r.jobs.Remove(r.jobs.Front())
 		}
 	}
 

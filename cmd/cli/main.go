@@ -8,7 +8,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/shadowbizz/apollo-crawler/internal/io"
 	"github.com/shadowbizz/apollo-crawler/internal/openvpn"
-	"github.com/shadowbizz/apollo-crawler/internal/queue"
+	"github.com/shadowbizz/apollo-crawler/internal/runner"
 	"github.com/spf13/cobra"
 )
 
@@ -33,29 +33,29 @@ var rootCmd = &cobra.Command{
 		vpn, err := openvpn.NewVPN(vpnConfigs, vpnAuth, vpnArgs)
 		exitOnError(err)
 
-		opts := []queue.QueueOpt{
-			queue.Debug(debug),
-			queue.FetchCredits(fetchCredits),
-			queue.Headless(headless),
-			queue.Dailyimit(dailyLimit),
-			queue.OutputDir(outputDir),
-			queue.SaveProgress(saveProgress),
-			queue.SetTab(tab),
-			queue.VPN(vpn),
+		opts := []runner.RunnerOpt{
+			runner.Debug(debug),
+			runner.FetchCredits(fetchCredits),
+			runner.Headless(headless),
+			runner.Dailyimit(dailyLimit),
+			runner.OutputDir(outputDir),
+			runner.SaveProgress(saveProgress),
+			runner.SetTab(tab),
+			runner.VPN(vpn),
 		}
 
 		if json {
-			opts = append(opts, queue.JSONOutput())
+			opts = append(opts, runner.JSONOutput())
 		} else if csv {
-			opts = append(opts, queue.CSVOutput())
+			opts = append(opts, runner.CSVOutput())
 		}
 
-		q, err := queue.New(accounts, opts...)
+		r, err := runner.New(accounts, opts...)
 		if err != nil {
 			exitOnError(err)
 		}
 
-		exitOnError(q.Run())
+		exitOnError(r.Run())
 	},
 }
 
