@@ -1,14 +1,12 @@
 package queue
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/chromedp/chromedp"
 	"github.com/shadowbizz/apollo-crawler/internal/actions"
 	"github.com/shadowbizz/apollo-crawler/internal/io"
 	"github.com/shadowbizz/apollo-crawler/internal/models"
@@ -22,15 +20,36 @@ var ErrorEmptyQueue = errors.New("job queue is empty")
 type job struct {
 	output  string
 	account *models.ApolloAccount
+	start   *models.Time
+	saved   int
+}
+
+func (j *job) isDoneToday() bool {
+	if !j.start.IsSome() {
+		return false
+	}
+
+	cond := time.Now().Before(j.start.Get())
+	if cond {
+		return true
+	}
+	j.reset()
+
+	return false
+}
+
+func (j *job) reset() {
+	j.start.Reset()
+	j.saved = 0
 }
 
 // Queue is a job queue which orchestrates and controls the execution
 // the scrape jobs alotted to each of the given apollo.io accounts.
 type Queue struct {
 	debug, fetchCredits, headless, saveProgress bool
-	limit                                       int
+	limit, outputKind                           int
 	jobs                                        []*job
-	outputDir, tab                              string
+	outputDir, errorDir, tab                    string
 	timeout                                     time.Duration
 	vpn                                         *openvpn.OpenVPN
 	leadWriters                                 []io.LeadWriter
@@ -44,8 +63,7 @@ type QueueOpt func(q *Queue)
 // # NOTE: Make sure to call this function only after queue.outputDir has been set.
 func CSVOutput() QueueOpt {
 	return func(q *Queue) {
-		w := io.NewCSVLeadWriter(q.getOutfileName(".csv"))
-		q.leadWriters = append(q.leadWriters, w)
+		q.outputKind = io.CSVOutput
 	}
 }
 
@@ -93,8 +111,7 @@ func Headless(b bool) QueueOpt {
 // # NOTE: Make sure to call this function only after queue.outputDir has been set.
 func JSONOutput() QueueOpt {
 	return func(q *Queue) {
-		w := io.NewJSONLeadWriter(q.getOutfileName(".json"))
-		q.leadWriters = append(q.leadWriters, w)
+		q.outputKind = io.JSONOutput
 	}
 }
 
@@ -156,7 +173,7 @@ func initAccounts(accounts *[]*models.ApolloAccount, vpn *openvpn.OpenVPN) {
 }
 
 // New instantiates a new Queue instance with the given apollo.io accounts as well as QueueOpts.
-func New(accounts []*models.ApolloAccount, opts ...QueueOpt) *Queue {
+func New(accounts []*models.ApolloAccount, opts ...QueueOpt) (*Queue, error) {
 	q := &Queue{
 		limit:     500,
 		timeout:   30 * time.Second,
@@ -176,21 +193,12 @@ func New(accounts []*models.ApolloAccount, opts ...QueueOpt) *Queue {
 
 	q.jobs = jobs
 
-	_ = os.MkdirAll(q.outputDir, 0755)
+	q.errorDir = filepath.Join(q.outputDir, "errors")
+	if err := os.MkdirAll(q.errorDir, 0755); err != nil {
+		return nil, err
+	}
 
-	return q
-}
-
-// newChromeContext creates a new chromedp context with the specified configuration.
-func (q *Queue) newChromeContext() (context.Context, context.CancelFunc) {
-	opts := append(
-		chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", q.headless),
-		chromedp.WindowSize(1920, 1080),
-	)
-	alloc, _ := chromedp.NewExecAllocator(context.Background(), opts...)
-
-	return chromedp.NewContext(alloc)
+	return q, nil
 }
 
 func (q *Queue) front() (*job, error) {
@@ -225,8 +233,4 @@ func (q *Queue) sendToBack() error {
 	q.enqueueJob(job)
 
 	return nil
-}
-
-func (q *Queue) getOutfileName(ext string) string {
-	return filepath.Join(q.outputDir, "leads-"+""+ext)
 }

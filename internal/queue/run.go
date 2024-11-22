@@ -3,10 +3,12 @@ package queue
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/chromedp/chromedp"
+	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/launcher"
 	"github.com/rs/zerolog/log"
 	"github.com/shadowbizz/apollo-crawler/internal/actions"
 	"github.com/shadowbizz/apollo-crawler/internal/io"
@@ -16,37 +18,49 @@ import (
 var (
 	// ErrorTargetReached indicates that the scrape target set for an ApolloAccount
 	// has been successfully reached.
-	ErrorTargetReached = errors.New("scrape target has been reached")
+	ErrorTargetReached = errors.New("scraper target has been reached")
 
-	// ErrorTargetReached indicates that the the daily limit for scraping an ApolloAccount
+	// ErrorTargetReached indicates that the daily limit for scraping an ApolloAccount
 	// has been reached.
-	ErrorDailyLimit = errors.New("scrape daily limit has been reachehd")
+	ErrorDailyLimit = errors.New("scraper daily limit has been reached")
+
+	// ErrorNoCredits indicates that the scraper has no more credits left to save leads.
+	ErrorNoCredits = errors.New("scraper credits have been exhauster")
 )
 
-// fetchCredits fetches and updates the credits for each ApolloAccount present
-// in the queue.
-func (q *Queue) _fetchCredits() error {
-	for _, job := range q.jobs {
-		ctx, cancel := q.newChromeContext()
+// browserWrapper is an abstraction over the rod launcher and browser types.
+type browserWrapper struct {
+	browser  *rod.Browser
+	launcher *launcher.Launcher
+}
 
-		if err := actions.SignIn(ctx, job.account.Email, job.account.Password, q.timeout); err != nil {
-			cancel()
-			return err
-		}
-
-		current, refresh, err := actions.FetchCredits(ctx, q.timeout)
-		if err != nil {
-			cancel()
-			return err
-		}
-
-		job.account.Credits = current
-		job.account.CreditRefresh = models.NewTime(refresh)
-
-		cancel()
+// newBrowserWrapper constructs an instance of *browserWrapper and launches a new browser instance.
+// This function checks the environment for a 'BROWSER' variable with a path a browser. If not found, rod
+// takes over.
+func newBrowserWrapper(headless bool) (*browserWrapper, error) {
+	wrapper := new(browserWrapper)
+	if browserPath, ok := os.LookupEnv("BROWSER"); ok {
+		wrapper.launcher = launcher.New().Bin(browserPath)
+	} else {
+		wrapper.launcher = launcher.New()
 	}
 
-	return nil
+	wrapper.launcher = wrapper.launcher.Headless(headless)
+
+	controlURL, err := wrapper.launcher.Launch()
+	if err != nil {
+		return nil, err
+	}
+	wrapper.browser = rod.New().ControlURL(controlURL)
+
+	return wrapper, wrapper.browser.Connect()
+}
+
+func (b *browserWrapper) close() {
+	if err := b.browser.Close(); err != nil {
+		log.Error().Err(err).Msg("failed to close browser")
+	}
+	b.launcher.Cleanup()
 }
 
 // _saveProgress saves the intermediary state of each ApolloAccount present
@@ -72,9 +86,59 @@ func (q *Queue) _saveProgress() error {
 	)
 }
 
-// scrapeJob runs a single isolated task of scraping leads from the url allocated
-// to each ApolloAccount until the daily limit has been reached or until completed.
-func (q *Queue) scrapeJob(job *job) error {
+func (q *Queue) scrapeLeads(page *rod.Page, job *job) error {
+	ext, err := io.ExtensionFromOutputType(q.outputKind)
+	if err != nil {
+		return err
+	}
+
+	var file string
+	if job.account.SaveToList != "" {
+		file = filepath.Join(q.outputDir, job.account.SaveToList+ext)
+	} else {
+
+		file = filepath.Join(q.outputDir, job.output+ext)
+	}
+
+	var writer io.LeadWriter
+	switch q.outputKind {
+	case io.CSVOutput:
+		writer = io.NewCSVLeadWriter(file)
+	case io.JSONOutput:
+		writer = io.NewJSONLeadWriter(file)
+	}
+
+	if err := actions.GoToList(page, job.account.SaveToList, 30*time.Second); err != nil {
+		return err
+	}
+
+	for {
+		leads, err := actions.ScrapeLeads(page, q.tab)
+		if err != nil {
+			return err
+		}
+
+		for _, lw := range q.leadWriters {
+			if err := lw.WriteLeads(leads); err != nil {
+				log.Error().Err(err).Str("writer", lw.Kind()).Msg("failed to write to lead writer")
+			}
+		}
+
+		// TODO: save leads that failed to be written for another try!
+		if err := writer.WriteLeads(leads); err != nil {
+			log.Error().
+				Err(err).
+				Str("account", job.account.Email).
+				Msg("failed to save leads")
+		}
+
+		if err := actions.GoToNextPage(page); err != nil {
+			return err
+		}
+	}
+}
+
+func (q *Queue) saveLeads(job *job) (err error) {
 	defer func() {
 		if q.vpn != nil {
 			if err := q.vpn.Stop(); err != nil {
@@ -93,21 +157,40 @@ func (q *Queue) scrapeJob(job *job) error {
 		}
 	}
 
-	ctx, cancel := q.newChromeContext()
-	defer cancel()
-
-	if err := actions.SignIn(ctx, job.account.Email, job.account.Password, q.timeout); err != nil {
+	b, err := newBrowserWrapper(q.headless)
+	if err != nil {
 		return err
 	}
 
-	if err := chromedp.Run(ctx, chromedp.Navigate(job.account.URL)); err != nil {
+	defer b.close()
+
+	page, err := actions.LoginToApollo(b.browser, job.account)
+	if err != nil {
 		return err
+	}
+
+	if err != nil {
+		_err := rod.Try(func() {
+			file := filepath.Join(q.errorDir, job.account.Email)
+			page.MustScreenshot(file)
+		})
+		err = errors.Join(err, _err)
+	}
+
+	if q.fetchCredits {
+		credits, refresh, err := actions.FetchCreditUsage(
+			page,
+			job.account,
+		)
+		if err != nil {
+			return err
+		}
+
+		job.account.Credits, job.account.CreditRefresh = credits, refresh
 	}
 
 	if q.tab != "" {
-		if err := actions.SetTab(ctx, q.tab, q.timeout); err != nil {
-			return err
-		}
+		q.tab = actions.NetNewTab
 	}
 
 	var lastErr error
@@ -119,22 +202,35 @@ func (q *Queue) scrapeJob(job *job) error {
 			return lastErr
 		}
 
-		_leads, err := actions.ScrapePage(ctx, q.timeout)
-		if err != nil {
-			retries++
-			lastErr = err
-			continue
-		}
-		leads = append(leads, _leads...)
-
-		for i := range q.leadWriters {
-			if err := q.leadWriters[i].WriteLeads(leads); err != nil {
-				log.Error().
-					Err(err).
-					Str("kind", q.leadWriters[i].Kind()).
-					Msg("failed to write leads")
+		if job.account.IsDone() {
+			err := q.scrapeLeads(page, job)
+			if err == nil || errors.Is(err, actions.ErrorListEnd) {
+				return ErrorTargetReached
 			}
+
+			lastErr = err
+			retries++
+			continue
 		}
+
+		if !job.account.CanScrape() {
+			return ErrorNoCredits
+		}
+
+		if job.isDoneToday() {
+			return ErrorDailyLimit
+		}
+
+		if !job.start.IsSome() {
+			job.start.Set(time.Now())
+		}
+
+		numLeads, err := actions.SaveLeadsToList(
+			page,
+			q.tab,
+			job.account.SaveToList,
+			60*time.Second,
+		)
 
 		if err != nil {
 			retries++
@@ -142,28 +238,14 @@ func (q *Queue) scrapeJob(job *job) error {
 			continue
 		}
 
-		job.account.IncSaved(len(leads))
-		job.account.UseCredits(len(leads))
-
-		// TODO: verbose credit usage tracking!
+		job.account.IncSaved(numLeads)
+		job.account.UseCredits(numLeads)
+		job.saved++
 
 		if q.saveProgress {
 			if err := q._saveProgress(); err != nil {
 				log.Warn().Err(err).Msg("failed to save scraper progress")
 			}
-		}
-
-		if job.account.IsDone() {
-			return ErrorTargetReached
-		}
-
-		if err := actions.NextPage(ctx, q.timeout); err != nil {
-			if errors.Is(err, actions.ErrorListEnd) {
-				return err
-			}
-			retries++
-			lastErr = err
-			continue
 		}
 	}
 
@@ -176,12 +258,6 @@ func (q *Queue) scrapeJob(job *job) error {
 
 // Run executes the queue of scrape jobs till completion (i.e., no more jobs are available).
 func (q *Queue) Run() error {
-	if q.fetchCredits {
-		if err := q._fetchCredits(); err != nil {
-			return err
-		}
-	}
-
 	for {
 		job, err := q.front()
 		if err != nil {
@@ -207,18 +283,29 @@ func (q *Queue) Run() error {
 			continue
 		}
 
-		err = q.scrapeJob(job)
-		if errors.Is(err, ErrorDailyLimit) {
-			log.Info().Str("account", account.Email).Msg("scraper job daily limit reached")
-			_ = q.sendToBack()
-		} else if errors.Is(err, ErrorTargetReached) || errors.Is(err, actions.ErrorListEnd) {
+		err = q.saveLeads(job)
+		switch err {
+		case ErrorDailyLimit:
+			log.Warn().Str("account", account.Email).Msg("scraper job daily limit reached")
+			job.account.SetTimeout(24 * time.Hour)
+			if err := q.sendToBack(); err != nil {
+				return err
+			}
+
+		case ErrorNoCredits:
+			log.Warn().Str("account", account.Email).Msg("scraper has no more credits left")
+			job.account.SetTimeout(time.Until(job.account.Timeout.Get()))
+			if err := q.sendToBack(); err != nil {
+				return err
+			}
+
+		case ErrorTargetReached:
 			log.Info().Str("account", account.Email).Msg("scraper job complete")
-			_, _ = q.dequeueJob()
-		} else {
-			log.Error().Err(err).Str("account", account.Email).Msg("scraper job failed")
-			_ = q.sendToBack()
+			_, err = q.dequeueJob()
+			if err != nil {
+				return err
+			}
 		}
-		continue
 	}
 
 	return nil
