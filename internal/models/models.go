@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/brianvoe/gofakeit/v7"
+	"github.com/go-rod/rod/lib/proto"
 )
 
 // ApolloLead represents a lead from apollo.io.
@@ -56,6 +57,33 @@ type ApolloAccount struct {
 	Timeout       *Time  `csv:"timeout"        json:"timeout"`
 	Target        int    `csv:"target"         json:"target"`
 	Saved         int    `csv:"saved"          json:"saved"`
+	loginCookies  []*proto.NetworkCookie
+}
+
+// AreCookiesValid checks if the session cookies for this ApolloAccount are valid and
+// have not expired as of yet.
+func (a *ApolloAccount) AreCookiesValid() bool {
+	if len(a.loginCookies) == 0 {
+		return false
+	}
+
+	for _, cookie := range a.loginCookies {
+		if time.Now().After(cookie.Expires.Time()) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// SetLoginCookies stores the session cookies for this ApolloAccount.
+func (a *ApolloAccount) SetLoginCookies(cookies []*proto.NetworkCookie) {
+	a.loginCookies = cookies
+}
+
+// GetLoginCookies fetches the session cookies for this ApolloAccount if they exist.
+func (a *ApolloAccount) GetLoginCookies() ([]*proto.NetworkCookie, bool) {
+	return a.loginCookies, len(a.loginCookies) > 0
 }
 
 // IsDone returns true if the ApolloAccount has no more new leads
