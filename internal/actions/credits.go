@@ -1,78 +1,76 @@
 package actions
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/chromedp/chromedp"
-	"github.com/rs/zerolog/log"
+	"github.com/go-rod/rod"
 	"github.com/shadowbizz/apollo-crawler/internal/models"
 )
 
-// FetchCredits fetches the credit usage data for the logged in apollo user.
-//
-// # NOTE: a user must be logged into apollo for this to work.
-func FetchCredits(ctx context.Context, timeout time.Duration) (int, time.Time, error) {
-	log.Info().Msg("now fetching credits")
+// FetchCreditUsage fetches the credit usage data for the logged in apollo user.
+// This function assumes that the agent has already logged into apollo.
+func FetchCreditUsage(
+	page *rod.Page,
+	account *models.ApolloAccount,
+) (credits int, refreshTime *models.Time, err error) {
+	var creditsText []string
+	err = rod.Try(func() {
+		creditElem := ".zp_ZlMia"
+		page.MustNavigate("https://app.apollo.io/#/settings/credits/current").
+			MustElement(creditElem).
+			MustWaitVisible()
 
-	_ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+		elems := page.MustElements(creditElem)
+		if len(elems) != 4 {
+			panic("unexpected number of credit elements found")
+		}
 
-	log.Debug().Msg("navigating to credits page")
+		creditsText = strings.Split(elems[1].MustText(), " ")
+		if len(creditsText) != 6 {
+			panic(fmt.Sprintf("unexpected credit string found: %q", strings.Join(creditsText, " ")))
+		}
+	})
 
-	var t time.Time
-	err := chromedp.Run(_ctx, chromedp.Navigate("https://app.apollo.io/#/settings/credits/current"))
 	if err != nil {
-		return 0, t, err
+		return
 	}
 
-	var renewal, credits string
-
-	_ctx, cancel = context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	err = chromedp.Run(
-		_ctx,
-		chromedp.Text(".zp_SJzex", &renewal, chromedp.ByQuery, chromedp.NodeVisible),
-		chromedp.EvaluateAsDevTools(
-			`document.querySelectorAll(".zp_ajv0U")[1].innerText`,
-			&credits,
-		),
-	)
+	creditsUsed, err := strconv.Atoi(strings.ReplaceAll(creditsText[0], ",", ""))
 	if err != nil {
-		return 0, t, err
+		err = fmt.Errorf("failed to fetch used credits amnt: %s", err)
+		return
 	}
 
-	log.Debug().Str("credits", credits).Str("renewal", renewal).Msg("fetched credit data")
-
-	renewalSplit := strings.Split(renewal, ": ")
-	if len(renewalSplit) < 2 {
-		return 0, t, fmt.Errorf("incorrect t string: %q", renewal)
-	}
-
-	zone, _ := time.Now().Zone()
-	t, err = time.Parse(models.TimeFormat, fmt.Sprintf("%s %s", renewalSplit[1], zone))
+	creditsMax, err := strconv.Atoi(strings.ReplaceAll(creditsText[2], ",", ""))
 	if err != nil {
-		return 0, t, err
+		err = fmt.Errorf("failed to fetch max credits amnt: %s", err)
+		return
 	}
 
-	creditsSplit := strings.Split(credits, " ")
-	if len(creditsSplit) < 6 {
-		return 0, t, fmt.Errorf("invalid credit usage string: %q", credits)
-	}
+	credits = creditsMax - creditsUsed
 
-	used, err := strconv.Atoi(strings.ReplaceAll(creditsSplit[0], ",", ""))
+	var creditsRenewal string
+	err = rod.Try(func() {
+		if text := page.MustElement(".zp_jtf9O").MustText(); len(text) < 30 {
+			panic(fmt.Errorf("unexpected credit renewal string: %q", text))
+		} else {
+			creditsRenewal = text[29:]
+		}
+	})
+
 	if err != nil {
-		return 0, t, err
+		return
 	}
 
-	total, err := strconv.Atoi(strings.ReplaceAll(creditsSplit[2], ",", ""))
+	_time, err := time.Parse(models.TimeFormat, creditsRenewal)
 	if err != nil {
-		return 0, t, err
+		return
 	}
 
-	return total - used, t, nil
+	refreshTime = models.NewTime(_time)
+
+	return
 }
