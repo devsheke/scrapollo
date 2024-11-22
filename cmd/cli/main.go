@@ -50,7 +50,12 @@ var rootCmd = &cobra.Command{
 			opts = append(opts, queue.CSVOutput())
 		}
 
-		exitOnError(queue.New(accounts, opts...).Run())
+		q, err := queue.New(accounts, opts...)
+		if err != nil {
+			exitOnError(err)
+		}
+
+		exitOnError(q.Run())
 	},
 }
 
