@@ -6,9 +6,9 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/shadowbizz/apollo-crawler/internal/models"
+	"github.com/shadowbizz/apollo-crawler/internal/io"
 	"github.com/shadowbizz/apollo-crawler/internal/openvpn"
-	"github.com/shadowbizz/apollo-crawler/internal/queue"
+	"github.com/shadowbizz/apollo-crawler/internal/runner"
 	"github.com/spf13/cobra"
 )
 
@@ -27,30 +27,37 @@ var rootCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		initLogger(debug)
 
-		accounts, err := models.ReadAccountsFile(input)
+		accounts, err := io.ReadAccountsFile(input)
 		exitOnError(err)
 
-		vpn, err := openvpn.NewVPN(vpnConfigs, vpnAuth, vpnArgs)
-		exitOnError(err)
-
-		opts := []queue.QueueOpt{
-			queue.Debug(debug),
-			queue.FetchCredits(fetchCredits),
-			queue.Headless(headless),
-			queue.Dailyimit(dailyLimit),
-			queue.OutputDir(outputDir),
-			queue.SaveProgress(saveProgress),
-			queue.SetTab(tab),
-			queue.VPN(vpn),
+		opts := []runner.RunnerOpt{
+			runner.Debug(debug),
+			runner.FetchCredits(fetchCredits),
+			runner.Headless(headless),
+			runner.Dailyimit(dailyLimit),
+			runner.OutputDir(outputDir),
+			runner.SaveProgress(saveProgress),
+			runner.SetTab(tab),
 		}
 
 		if json {
-			opts = append(opts, queue.JSONOutput())
+			opts = append(opts, runner.JSONOutput())
 		} else if csv {
-			opts = append(opts, queue.CSVOutput())
+			opts = append(opts, runner.CSVOutput())
 		}
 
-		exitOnError(queue.New(accounts, opts...).Run())
+		if vpnConfigs != "" {
+			vpn, err := openvpn.NewVPN(vpnConfigs, vpnAuth, vpnArgs)
+			exitOnError(err)
+			opts = append(opts, runner.VPN(vpn))
+		}
+
+		r, err := runner.New(accounts, opts...)
+		if err != nil {
+			exitOnError(err)
+		}
+
+		exitOnError(r.Run())
 	},
 }
 
