@@ -113,7 +113,7 @@ func GetPageInfo(page *rod.Page) (*PageInfo, error) {
 				MustWaitVisible()
 		})
 
-		if err != nil {
+		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
 		}
 
