@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/shadowbizz/apollo-crawler/internal/models"
 )
 
@@ -77,8 +78,12 @@ func NewJobQueue(accounts []*models.ApolloAccount) *JobQueue {
 	q := list.New()
 
 	for _, account := range accounts {
+		if account.SaveToList == "" {
+			account.SaveToList = uuid.NewString() + "-" + time.Now().Format(time.RFC3339)
+		}
 		job := &ScrapeJob{
 			account:    account,
+			startedAt:  &models.Time{},
 			outputName: strings.ReplaceAll(account.Email, "@", "_"),
 		}
 		q.PushBack(job)
