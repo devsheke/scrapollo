@@ -15,12 +15,14 @@
       with pkgs; {
         devShell = mkShell {
           buildInputs = with pkgs; [
+            chromium
             golangci-lint
             golangci-lint-langserver
             golines
             gopls
             gotools
           ];
+          BROWSER = "${pkgs.chromium}/bin/chromium";
         };
       });
 }
