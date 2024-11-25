@@ -111,6 +111,7 @@ func (q *ScrapeRunner) scrapeLeads(page *rod.Page, job *ScrapeJob) error {
 		writer = io.NewJSONLeadWriter(file)
 	}
 
+	log.Info().Str("account", job.account.Email).Msg("scraping leads")
 	if err := actions.GoToList(page, job.account.SaveToList, q.timeout); err != nil {
 		return err
 	}
@@ -135,6 +136,8 @@ func (q *ScrapeRunner) scrapeLeads(page *rod.Page, job *ScrapeJob) error {
 				Msg("failed to save leads")
 		}
 
+		log.Info().Str("account", job.account.Email).Int("num", len(leads)).Msg("scraped leads")
+
 		if err := actions.GoToNextPage(page); err != nil {
 			return err
 		}
@@ -151,7 +154,7 @@ func (q *ScrapeRunner) saveLeads(job *ScrapeJob) (err error) {
 	}()
 
 	if q.vpn != nil {
-		if err := q.vpn.Start(job.account.VpnConfig); err != nil {
+		if err := q.vpn.Restart(job.account.VpnConfig); err != nil {
 			newConf, err := q.vpn.Backup()
 			if err != nil {
 				return err
@@ -164,26 +167,32 @@ func (q *ScrapeRunner) saveLeads(job *ScrapeJob) (err error) {
 	if err != nil {
 		return err
 	}
+	log.Info().Msg("allocated a new browser")
 
-	defer b.close()
-
-	page, err := actions.LoginToApollo(b.browser, job.account)
+	page, err := actions.LoginToApollo(b.browser, job.account, q.timeout)
 	if err != nil {
 		return err
 	}
 
-	if err != nil {
-		_err := rod.Try(func() {
-			file := filepath.Join(q.errorDir, job.account.Email)
-			page.MustScreenshot(file)
-		})
-		err = errors.Join(err, _err)
-	}
+	defer func() {
+		if err != nil {
+			_err := rod.Try(func() {
+				file := filepath.Join(q.errorDir, job.account.Email)
+				page.MustScreenshot(file)
+			})
+			if err != nil {
+				log.Error().Err(err).Msg("failed to grab error screenshot")
+			}
+			err = errors.Join(err, _err)
+		}
+		b.close()
+	}()
 
 	if q.fetchCredits {
 		credits, refresh, err := actions.FetchCreditUsage(
 			page,
 			job.account,
+			q.timeout,
 		)
 		if err != nil {
 			return err
@@ -192,15 +201,19 @@ func (q *ScrapeRunner) saveLeads(job *ScrapeJob) (err error) {
 		job.account.Credits, job.account.CreditRefresh = credits, refresh
 	}
 
-	if q.tab != "" {
+	if q.tab == "" {
 		q.tab = actions.NetNewTab
 	}
 
 	var lastErr error
-	var leads []*models.ApolloLead
 	var retries int
 
-	for len(leads) <= q.limit {
+	log.Info().
+		Str("account", job.account.Email).
+		Str("list", job.account.SaveToList).
+		Msg("saving leads to list")
+
+	for {
 		if retries >= 10 {
 			return lastErr
 		}
@@ -228,9 +241,12 @@ func (q *ScrapeRunner) saveLeads(job *ScrapeJob) (err error) {
 			job.startedAt.Set(time.Now())
 		}
 
+		if err := actions.SelectTab(page, q.tab); err != nil {
+			return err
+		}
+
 		numLeads, err := actions.SaveLeadsToList(
 			page,
-			q.tab,
 			job.account.SaveToList,
 			60*time.Second,
 		)
@@ -245,18 +261,19 @@ func (q *ScrapeRunner) saveLeads(job *ScrapeJob) (err error) {
 		job.account.UseCredits(numLeads)
 		job.saved++
 
+		log.Info().
+			Str("account", job.account.Email).
+			Str("list", job.account.SaveToList).
+			Int("num", numLeads).
+			Msg("saved leads")
+
 		if q.saveProgress {
 			if err := q._saveProgress(); err != nil {
 				log.Warn().Err(err).Msg("failed to save scraper progress")
 			}
+			log.Info().Str("account", job.account.Email).Msg("saved scraper progress")
 		}
 	}
-
-	if len(leads) >= q.limit {
-		job.account.SetTimeout(24 * time.Hour)
-	}
-
-	return ErrorDailyLimit
 }
 
 // Run executes the queue of scrape jobs till completion (i.e., no more jobs are available).
