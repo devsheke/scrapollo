@@ -30,9 +30,6 @@ var rootCmd = &cobra.Command{
 		accounts, err := io.ReadAccountsFile(input)
 		exitOnError(err)
 
-		vpn, err := openvpn.NewVPN(vpnConfigs, vpnAuth, vpnArgs)
-		exitOnError(err)
-
 		opts := []runner.RunnerOpt{
 			runner.Debug(debug),
 			runner.FetchCredits(fetchCredits),
@@ -41,13 +38,18 @@ var rootCmd = &cobra.Command{
 			runner.OutputDir(outputDir),
 			runner.SaveProgress(saveProgress),
 			runner.SetTab(tab),
-			runner.VPN(vpn),
 		}
 
 		if json {
 			opts = append(opts, runner.JSONOutput())
 		} else if csv {
 			opts = append(opts, runner.CSVOutput())
+		}
+
+		if vpnConfigs != "" {
+			vpn, err := openvpn.NewVPN(vpnConfigs, vpnAuth, vpnArgs)
+			exitOnError(err)
+			opts = append(opts, runner.VPN(vpn))
 		}
 
 		r, err := runner.New(accounts, opts...)
