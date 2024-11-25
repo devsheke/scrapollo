@@ -62,15 +62,10 @@ func randomSleep() {
 // is not the case.
 func SaveLeadsToList(
 	page *rod.Page,
-	tab string,
 	listName string,
 	timeout time.Duration,
 ) (int, error) {
 	if err := closeNewUIDialog(page); err != nil {
-		return 0, err
-	}
-
-	if err := SelectTab(page, tab); err != nil {
 		return 0, err
 	}
 
@@ -190,8 +185,6 @@ func ScrapeLeads(page *rod.Page, tab string) ([]*models.ApolloLead, error) {
 				return
 			}
 		})
-
-		log.Info().Msgf("%+v", lead)
 
 		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 			return nil, err

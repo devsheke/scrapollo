@@ -15,6 +15,7 @@ import (
 func LoginToApollo(
 	b *rod.Browser,
 	scraper *models.ApolloAccount,
+	timeout time.Duration,
 ) (*rod.Page, error) {
 	page, err := stealth.Page(b)
 	if err != nil {
@@ -46,7 +47,7 @@ func LoginToApollo(
 	}
 
 	requiredCookies := make(map[string]*proto.NetworkCookie)
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	log.Debug().Msg("querying cookies to detect auth state")

@@ -10,11 +10,13 @@ import (
 	"github.com/shadowbizz/apollo-crawler/internal/util"
 )
 
+var timeouts = []time.Duration{60 * time.Second, 120 * time.Second}
+
 func TestLogin(t *testing.T) {
 	scraper := util.GetAccountFromEnv(t)
 	browser := util.SetupBrowserFromEnv(t)
 
-	if _, err := LoginToApollo(browser, scraper); err != nil {
+	if _, err := LoginToApollo(browser, scraper, timeouts[0]); err != nil {
 		t.Error(err)
 	}
 
@@ -27,7 +29,7 @@ func TestSave(t *testing.T) {
 	scraper := util.GetAccountFromEnv(t)
 	browser := util.SetupBrowserFromEnv(t)
 
-	page, err := LoginToApollo(browser, scraper)
+	page, err := LoginToApollo(browser, scraper, timeouts[0])
 	if err != nil {
 		t.Error(err)
 	}
@@ -37,9 +39,8 @@ func TestSave(t *testing.T) {
 	start := time.Now()
 	numLeads, err := SaveLeadsToList(
 		page,
-		NetNewTab,
 		fmt.Sprintf("test-%s", time.Now().Format(time.RFC3339Nano)),
-		60*time.Second,
+		timeouts[0],
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +52,7 @@ func TestScrape(t *testing.T) {
 	scraper := util.GetAccountFromEnv(t)
 	browser := util.SetupBrowserFromEnv(t)
 
-	page, err := LoginToApollo(browser, scraper)
+	page, err := LoginToApollo(browser, scraper, timeouts[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +81,7 @@ func TestGetPageInfo(t *testing.T) {
 	scraper := util.GetAccountFromEnv(t)
 	browser := util.SetupBrowserFromEnv(t)
 
-	page, err := LoginToApollo(browser, scraper)
+	page, err := LoginToApollo(browser, scraper, timeouts[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +100,7 @@ func TestNextPage(t *testing.T) {
 	scraper := util.GetAccountFromEnv(t)
 	browser := util.SetupBrowserFromEnv(t)
 
-	page, err := LoginToApollo(browser, scraper)
+	page, err := LoginToApollo(browser, scraper, timeouts[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,12 +135,13 @@ func TestFetchCredits(t *testing.T) {
 	scraper := util.GetAccountFromEnv(t)
 	browser := util.SetupBrowserFromEnv(t)
 
-	page, err := LoginToApollo(browser, scraper)
+	page, err := LoginToApollo(browser, scraper, timeouts[0])
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if scraper.Credits, scraper.CreditRefresh, err = FetchCreditUsage(page, scraper); err != nil {
+	scraper.Credits, scraper.CreditRefresh, err = FetchCreditUsage(page, scraper, timeouts[0])
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -154,7 +156,7 @@ func TestGoToList(t *testing.T) {
 	scraper := util.GetAccountFromEnv(t)
 	browser := util.SetupBrowserFromEnv(t)
 
-	page, err := LoginToApollo(browser, scraper)
+	page, err := LoginToApollo(browser, scraper, timeouts[0])
 	if err != nil {
 		page.MustScreenshot("test-gotolist.png")
 		t.Fatal(err)
@@ -169,7 +171,7 @@ func TestGoToList(t *testing.T) {
 		t.Fatalf("could not find 'LIST' in env")
 	}
 
-	if err := GoToList(page, list, 60*time.Second); err != nil {
+	if err := GoToList(page, list, timeouts[0]); err != nil {
 		page.MustScreenshot("test-gotolist.png")
 		t.Fatal(err)
 	}
