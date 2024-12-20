@@ -47,7 +47,7 @@ func Start(config, auth string) (*cmd.Cmd, <-chan cmd.Status, error) {
 
 	process := cmd.NewCmdOptions(
 		cmd.Options{Streaming: true},
-		"sudo", "openvpn",
+		"openvpn",
 		"--config",
 		config,
 		"--auth-user-pass",
