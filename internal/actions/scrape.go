@@ -2,10 +2,10 @@ package actions
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"math/rand/v2"
-	"strings"
 	"time"
 
 	"github.com/go-rod/rod"
@@ -65,10 +65,6 @@ func SaveLeadsToList(
 	listName string,
 	timeout time.Duration,
 ) (int, error) {
-	if err := closeNewUIDialog(page); err != nil {
-		return 0, err
-	}
-
 	pageInfo, err := GetPageInfo(page)
 	if err != nil {
 		return 0, err
@@ -109,89 +105,34 @@ func SaveLeadsToList(
 	return pageInfo.Size, err
 }
 
+//go:embed scripts/scrape.js
+var scrapeScript string
+
 // ScrapeLeads scrapes all available leads on the given 'People' page on Apollo for the
 // given URL or set of filters. This function assumes that the agent is already on the
 // 'People' page and returns ErrorNotOnPeoplePage if that is not the case.
-func ScrapeLeads(page *rod.Page, tab string) ([]*models.ApolloLead, error) {
-	if err := closeNewUIDialog(page); err != nil {
-		return nil, err
-	}
-
-	var rows []*rod.Element
+func ScrapeLeads(page *rod.Page, tab string, timeout time.Duration) ([]*models.ApolloLead, error) {
 	err := rod.Try(func() {
-		page.MustElement(".zp_hWv1I").MustWaitVisible()
-		rows = page.MustElements(".zp_hWv1I")
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		page.Context(ctx).MustElement(".zp_tFLCQ .zp_hWv1I").MustWaitVisible()
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	leads := make([]*models.ApolloLead, len(rows)-1)
-	for i, row := range rows[1:] {
-		columns, err := row.Elements(".zp_KtrQp")
-		if err != nil {
-			return nil, err
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-		lead := new(models.ApolloLead)
-		err = rod.Try(func() {
-			lead.Name = strings.ReplaceAll(columns[1].MustText(), "\n------", "")
-			lead.Title = columns[2].MustText()
-			lead.Company = columns[3].MustText()
-			lead.Location = columns[8].MustText()
-			lead.Employees = columns[9].MustText()
-			lead.Industry = columns[10].MustText()
-			lead.Keywords = strings.ReplaceAll(columns[11].MustText(), "\n", ",")
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		linkedinCol, err := columns[7].Element("a")
-		if err == nil {
-			err = rod.Try(func() {
-				lead.LinkedIn = *linkedinCol.MustAttribute("href")
-			})
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		err = rod.Try(func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			defer cancel()
-
-			for {
-				select {
-				case <-ctx.Done():
-					panic(ctx.Err())
-				case <-time.After(500 * time.Millisecond):
-				}
-				emailSpan, err := columns[4].Element(".zp_xvo3G")
-				if err != nil {
-					if errors.Is(err, &rod.ElementNotFoundError{}) {
-						continue
-					}
-					panic(err)
-				}
-
-				lead.Email = []string{emailSpan.MustText()}
-				break
-			}
-
-			lead.Phone, err = columns[5].Text()
-			if err != nil {
-				log.Error().Err(err).Msgf("failed to get phone for: %q", lead.Name)
-				return
-			}
-		})
-
-		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
-			return nil, err
-		}
-
-		leads[i] = lead
+	var leads []*models.ApolloLead
+	obj, err := page.Context(ctx).Eval(scrapeScript)
+	if err != nil {
+		return nil, err
 	}
 
+	err = obj.Value.Unmarshal(&leads)
+	if err != nil {
+		return nil, err
+	}
 	return leads, nil
 }
