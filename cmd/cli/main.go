@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -15,7 +16,7 @@ import (
 const Version string = "0.0.1"
 
 var (
-	dailyLimit                                             int
+	dailyLimit, timeout                                    int
 	debug, fetchCredits, headless, saveProgress, json, csv bool
 	input, outputDir, tab                                  string
 	vpnConfigs, vpnAuth, vpnArgs                           string
@@ -38,6 +39,7 @@ var rootCmd = &cobra.Command{
 			runner.OutputDir(outputDir),
 			runner.SaveProgress(saveProgress),
 			runner.SetTab(tab),
+			runner.Timeout(time.Duration(timeout) * time.Second),
 		}
 
 		if json {
@@ -82,6 +84,8 @@ func init() {
 
 	rootCmd.Flags().
 		IntVarP(&dailyLimit, "daily-limit", "d", 500, "daily save limit (different from scrape limit)")
+	rootCmd.Flags().
+		IntVarP(&timeout, "timeout", "T", 60, "the maximum time allowed for an operation to complete (in seconds)")
 
 	rootCmd.Flags().BoolVar(&debug, "debug", false, "print debugging information")
 	rootCmd.Flags().

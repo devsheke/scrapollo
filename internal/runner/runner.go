@@ -120,7 +120,7 @@ func VPN(o *openvpn.OpenVPN) RunnerOpt {
 func New(accounts []*models.ApolloAccount, opts ...RunnerOpt) (*ScrapeRunner, error) {
 	r := &ScrapeRunner{
 		limit:     500,
-		timeout:   30 * time.Second,
+		timeout:   60 * time.Second,
 		outputDir: "./apollo-output",
 	}
 
