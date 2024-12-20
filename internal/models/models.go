@@ -2,6 +2,7 @@ package models
 
 import (
 	"math/rand/v2"
+	"strings"
 	"time"
 
 	"github.com/brianvoe/gofakeit/v7"
@@ -10,17 +11,16 @@ import (
 
 // ApolloLead represents a lead from apollo.io.
 type ApolloLead struct {
-	Name      string   `json:"name"      csv:"name"`
-	Title     string   `json:"title"     csv:"title"`
-	Company   string   `json:"company"   csv:"company"`
-	Location  string   `json:"location"  csv:"location"`
-	Employees string   `json:"employees" csv:"employees"`
-	Phone     string   `json:"phone"     csv:"phone"`
-	Industry  string   `json:"industry"  csv:"industry"`
-	Keywords  string   `json:"keywords"  csv:"keywords"`
-	Email     []string `json:"email"     csv:"email"`
-	Links     []string `json:"links"     csv:"links"`
-	LinkedIn  string   `json:"linkedin"  csv:"linkedin"`
+	Name      string `json:"name"      csv:"name"`
+	Title     string `json:"title"     csv:"title"`
+	Company   string `json:"company"   csv:"company"`
+	Location  string `json:"location"  csv:"location"`
+	Employees string `json:"employees" csv:"employees"`
+	Phone     string `json:"phone"     csv:"phone"`
+	Industry  string `json:"industry"  csv:"industry"`
+	Keywords  string `json:"keywords"  csv:"keywords"`
+	Email     string `json:"email"     csv:"email"`
+	Links     string `json:"links"     csv:"links"`
 }
 
 // GenerateakeLead generates a fake ApolloLead using random values.
@@ -37,10 +37,9 @@ func GenerateakeLead(faker *gofakeit.Faker) *ApolloLead {
 		Title:    faker.JobTitle(),
 		Location: faker.City(),
 		Phone:    faker.Phone(),
-		Email:    []string{faker.Email()},
+		Email:    faker.Email(),
 		Industry: faker.Comment(),
-		LinkedIn: faker.URL(),
-		Links:    links,
+		Links:    strings.Join(links, ","),
 	}
 }
 
@@ -68,7 +67,8 @@ func (a *ApolloAccount) AreCookiesValid() bool {
 	}
 
 	for _, cookie := range a.loginCookies {
-		if time.Now().After(cookie.Expires.Time()) {
+		expiry := cookie.Expires.Time()
+		if time.Now().After(cookie.Expires.Time()) && expiry.Year() != 1970 {
 			return false
 		}
 	}
@@ -100,8 +100,8 @@ func (a *ApolloAccount) IncSaved(amnt int) {
 // IsTimedOut returns true if the ApolloAccount has hit the daily
 // limit of scraping new leads.
 func (a *ApolloAccount) IsTimedOut() bool {
-	if a.Timeout.ok {
-		return true
+	if !a.Timeout.ok {
+		return false
 	}
 
 	cond := time.Now().Before(a.Timeout.time)
