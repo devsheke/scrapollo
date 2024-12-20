@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -83,13 +84,13 @@ func (q *ScrapeRunner) _saveProgress() error {
 		accounts,
 		filepath.Join(
 			q.outputDir,
-			filepath.Join(q.outputDir, fmt.Sprintf("apollo-scrape-progress%s", ext)),
+			fmt.Sprintf("apollo-scrape-progress%s", ext),
 		),
 		io.CSVOutput,
 	)
 }
 
-func (q *ScrapeRunner) scrapeLeads(page *rod.Page, job *ScrapeJob) error {
+func (q *ScrapeRunner) scrapeLeads(page *rod.Page, bw *browserWrapper, job *ScrapeJob) error {
 	ext, err := io.ExtensionFromOutputType(q.outputKind)
 	if err != nil {
 		return err
@@ -116,8 +117,44 @@ func (q *ScrapeRunner) scrapeLeads(page *rod.Page, job *ScrapeJob) error {
 		return err
 	}
 
+	pageCount := 1
+	total := 0
 	for {
-		leads, err := actions.ScrapeLeads(page, q.tab)
+		if (pageCount-1) > 0 && (pageCount-1)%10 == 0 {
+			info, err := page.Info()
+			if err != nil {
+				return err
+			}
+
+			url := info.URL
+			if err := page.Close(); err != nil {
+				return err
+			}
+
+			_page, err := actions.LoginToApollo(bw.browser, job.account, q.errorDir, q.timeout)
+			if err != nil {
+				return err
+			}
+
+			*page = *_page
+
+			err = page.Navigate(url)
+			if err != nil {
+				return err
+			}
+		}
+
+		err = actions.CloseNewUIDialog(page, 1*time.Second)
+		if err != nil {
+			return err
+		}
+
+		err = actions.ClosePowerUpDialog(page, 1*time.Second)
+		if err != nil {
+			return err
+		}
+
+		leads, err := actions.ScrapeLeads(page, q.tab, q.timeout)
 		if err != nil {
 			return err
 		}
@@ -136,11 +173,18 @@ func (q *ScrapeRunner) scrapeLeads(page *rod.Page, job *ScrapeJob) error {
 				Msg("failed to save leads")
 		}
 
-		log.Info().Str("account", job.account.Email).Int("num", len(leads)).Msg("scraped leads")
+		total += len(leads)
+
+		log.Info().Str("account", job.account.Email).Int("num", total).Msg("scraped leads")
 
 		if err := actions.GoToNextPage(page); err != nil {
+			if !(errors.Is(err, actions.ErrorListEnd)) {
+				err = errors.Join(err, os.Remove(file))
+			}
 			return err
 		}
+
+		pageCount++
 	}
 }
 
@@ -155,40 +199,60 @@ func (q *ScrapeRunner) saveLeads(job *ScrapeJob) (err error) {
 
 	if q.vpn != nil {
 		if err := q.vpn.Restart(job.account.VpnConfig); err != nil {
-			newConf, err := q.vpn.Backup()
-			if err != nil {
-				return err
+			newConf, _err := q.vpn.Backup()
+			if _err != nil {
+				return errors.Join(err, _err)
 			}
 			job.account.VpnConfig = newConf
 		}
 	}
 
-	b, err := newBrowserWrapper(q.headless)
+	bw, err := newBrowserWrapper(q.headless)
 	if err != nil {
 		return err
 	}
 	log.Info().Msg("allocated a new browser")
 
-	page, err := actions.LoginToApollo(b.browser, job.account, q.timeout)
+	page, err := actions.LoginToApollo(bw.browser, job.account, q.errorDir, q.timeout)
 	if err != nil {
-		return err
+		return
 	}
 
 	defer func() {
-		if err != nil {
-			_err := rod.Try(func() {
-				file := filepath.Join(q.errorDir, job.account.Email)
-				page.MustScreenshot(file)
-			})
-			if err != nil {
-				log.Error().Err(err).Msg("failed to grab error screenshot")
+		switch err {
+		case ErrorTargetReached, actions.ErrorListEnd, ErrorDailyLimit:
+			bw.close()
+			return
+		default:
+			if err != nil && page != nil {
+				_err := rod.Try(func() {
+					file := filepath.Join(q.errorDir, job.account.Email)
+					page.MustScreenshot(file + ".png")
+					if err := os.WriteFile(file+".html", []byte(page.MustHTML()), 0644); err != nil {
+						panic(err)
+					}
+				})
+				if _err != nil {
+					log.Error().Err(_err).Msg("failed to grab error screenshot")
+				}
+				err = errors.Join(err, _err)
 			}
-			err = errors.Join(err, _err)
+
+			bw.close()
 		}
-		b.close()
 	}()
 
 	if q.fetchCredits {
+		err := actions.CloseNewUIDialog(page, 5*time.Second)
+		if err != nil {
+			return err
+		}
+
+		err = actions.ClosePowerUpDialog(page, 5*time.Second)
+		if err != nil {
+			return err
+		}
+
 		credits, refresh, err := actions.FetchCreditUsage(
 			page,
 			job.account,
@@ -199,6 +263,16 @@ func (q *ScrapeRunner) saveLeads(job *ScrapeJob) (err error) {
 		}
 
 		job.account.Credits, job.account.CreditRefresh = credits, refresh
+		log.Info().
+			Str("account", job.account.Email).
+			Int("credits", credits).
+			Time("renewal time", refresh.Get()).
+			Msg("got credit info")
+	}
+
+	err = page.Navigate(job.account.URL)
+	if err != nil {
+		return err
 	}
 
 	if q.tab == "" {
@@ -213,15 +287,47 @@ func (q *ScrapeRunner) saveLeads(job *ScrapeJob) (err error) {
 		Str("list", job.account.SaveToList).
 		Msg("saving leads to list")
 
+	if !job.startedAt.IsSome() {
+		job.startedAt.Set(time.Now())
+	}
+
+	err = rod.Try(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), q.timeout)
+		defer cancel()
+
+		page.Context(ctx).MustElement(".zp_tFLCQ .zp_hWv1I").MustWaitVisible()
+	})
+	if err != nil {
+		return err
+	}
+
+	err = actions.CloseNewUIDialog(page, 5*time.Second)
+	if err != nil {
+		return err
+	}
+
+	err = actions.ClosePowerUpDialog(page, 5*time.Second)
+	if err != nil {
+		return err
+	}
+
+	if err := actions.SelectTab(page, q.tab); err != nil {
+		return err
+	}
+
 	for {
 		if retries >= 10 {
 			return lastErr
 		}
 
 		if job.account.IsDone() {
-			err := q.scrapeLeads(page, job)
-			if err == nil || errors.Is(err, actions.ErrorListEnd) {
-				return ErrorTargetReached
+			log.Info().
+				Str("account", job.account.Email).
+				Str("list", job.account.SaveToList).
+				Msg("done saving leads")
+			err := q.scrapeLeads(page, bw, job)
+			if err != nil {
+				return err
 			}
 
 			lastErr = err
@@ -237,19 +343,29 @@ func (q *ScrapeRunner) saveLeads(job *ScrapeJob) (err error) {
 			return ErrorDailyLimit
 		}
 
-		if !job.startedAt.IsSome() {
-			job.startedAt.Set(time.Now())
+		err = actions.CloseNewUIDialog(page, 1*time.Second)
+		if err != nil {
+			return err
 		}
 
-		if err := actions.SelectTab(page, q.tab); err != nil {
+		err = actions.ClosePowerUpDialog(page, 1*time.Second)
+		if err != nil {
 			return err
 		}
 
 		numLeads, err := actions.SaveLeadsToList(
 			page,
 			job.account.SaveToList,
-			60*time.Second,
+			q.timeout,
 		)
+
+		if errors.Is(err, actions.ErrorListEnd) {
+			log.Info().
+				Str("account", job.account.Email).
+				Str("list", job.account.SaveToList).
+				Msg("done saving leads")
+			return q.scrapeLeads(page, bw, job)
+		}
 
 		if err != nil {
 			retries++
@@ -259,12 +375,12 @@ func (q *ScrapeRunner) saveLeads(job *ScrapeJob) (err error) {
 
 		job.account.IncSaved(numLeads)
 		job.account.UseCredits(numLeads)
-		job.saved++
+		job.saved += numLeads
 
 		log.Info().
 			Str("account", job.account.Email).
 			Str("list", job.account.SaveToList).
-			Int("num", numLeads).
+			Int("num", job.account.Saved).
 			Msg("saved leads")
 
 		if q.saveProgress {
@@ -288,7 +404,7 @@ func (r *ScrapeRunner) Run() error {
 		account := job.account
 
 		if account.IsTimedOut() {
-			log.Debug().
+			log.Info().
 				Str("account", account.Email).
 				Time("till", account.Timeout.Get()).
 				Msg("skipping timed out job")
@@ -315,9 +431,23 @@ func (r *ScrapeRunner) Run() error {
 				return err
 			}
 
-		case ErrorTargetReached:
+		case ErrorTargetReached, actions.ErrorListEnd:
 			log.Info().Str("account", account.Email).Msg("scraper job complete")
 			r.jobs.Remove(r.jobs.Front())
+
+		default:
+			if err != nil {
+				log.Error().
+					Err(err).
+					Str("account", account.Email).
+					Msg("scraper encountered an error")
+			}
+			if err := r.jobs.Requeue(); err != nil {
+				return err
+			}
+		}
+		if err = r._saveProgress(); err != nil {
+			log.Error().Err(err).Msg("failed to save scrapers' progress")
 		}
 	}
 
