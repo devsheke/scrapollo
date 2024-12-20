@@ -1,0 +1,25 @@
+FROM golang:latest AS builder
+
+WORKDIR /scrapollo
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
+
+COPY . .
+RUN make build
+
+FROM alpine:latest
+
+ENV INPUT="input.csv"
+ENV SHARED_DIR="/home/shared"
+ENV OUTPUT_TYPE="--csv"
+ENV VPN_CONFIGS="vpn_configs"
+ENV VPN_CREDENTIALS="credentials.txt"
+ENV VPN_ARGS=""
+ENV DEBUG="true"
+ENV TIMEOUT="120"
+
+RUN apk --no-cache add chromium openvpn gcompat tzdata
+COPY --from=builder /scrapollo/_build/scrapollo /usr/bin/scrapollo
+
+CMD [ "sh", "-c", "export BROWSER=/usr/bin/chromium && /usr/bin/scrapollo -i ${SHARED_DIR}/${INPUT} -o ${SHARED_DIR}/scrape-results --vpn-configs ${SHARED_DIR}/${VPN_CONFIGS} --vpn-auth ${SHARED_DIR}/credentials.txt --vpn-args ${VPN_ARGS} --debug ${DEBUG} --save-progress --fetch-credits ${OUTPUT_TYPE} -T ${TIMEOUT}" ]
+
