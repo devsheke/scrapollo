@@ -16,11 +16,13 @@
         devShell = mkShell {
           buildInputs = with pkgs; [
             chromium
+            dockerfile-language-server-nodejs
             golangci-lint
             golangci-lint-langserver
             golines
             gopls
             gotools
+            nodePackages.typescript-language-server
           ];
           BROWSER = "${pkgs.chromium}/bin/chromium";
         };
