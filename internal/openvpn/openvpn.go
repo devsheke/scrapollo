@@ -1,10 +1,12 @@
 package openvpn
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"slices"
+	"time"
 
 	"math/rand/v2"
 
@@ -90,7 +92,7 @@ func (o *OpenVPN) Stop() error {
 // Restart restarts the OpenVPN process with the specified configuration file.
 func (o *OpenVPN) Restart(config string) error {
 	var err error
-	o.process, o.status, err = openvpn.Restart(o.process, config, o.auth)
+	o.process, o.status, err = openvpn.Restart(o.process, filepath.Join(o.dir, config), o.auth)
 
 	return err
 }
@@ -137,7 +139,14 @@ func (o *OpenVPN) Backup() (string, error) {
 
 	usedCache := make(map[int]int)
 
-	for retries := 0; retries < 10; retries++ {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	defer cancel()
+	for {
+		select {
+		case <-ctx.Done():
+			return "", openvpn.NewVPNTimeoutError("too many retries")
+		default:
+		}
 		r := rand.IntN(len(unused))
 		if _, used := usedCache[r]; used {
 			continue
@@ -148,6 +157,4 @@ func (o *OpenVPN) Backup() (string, error) {
 			return unused[r], nil
 		}
 	}
-
-	return "", openvpn.NewVPNTimeoutError("too many retries")
 }

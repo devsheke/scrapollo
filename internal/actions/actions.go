@@ -17,22 +17,47 @@ import (
 // ErrorNotOnPeoplePage indicates that the agent is not on the 'People' page of apollo.io.
 var ErrorNotOnPeoplePage = errors.New("cannot go to list as agent is not on the 'People' page")
 
-// closeNewUIDialog closes the Apollo dialog which prompts users to try out their new UI.
-func closeNewUIDialog(page *rod.Page) error {
-	log.Info().Msg("checking if new UI tour dialog exists")
-	err := rod.Try(func() {
+type dialog struct {
+	class, regex string
+}
+
+var (
+	newUIDialog   = dialog{".zp_p2Xqs.zp_v565m.zp_qhNxC", "Skip tour"}
+	powerUpDialog = dialog{".zp_tZMYK", "Got it"}
+)
+
+// closeDialog closes the Apollo dialog which prompts users to try out their new UI.
+func closeDialog(page *rod.Page, dialog dialog) error {
+	log.Debug().Msg("checking if any annoying dialogs are present")
+	for {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		page.Context(ctx).MustElement(".sc-ifAKC").MustElement("a").MustClick()
-	})
+		el, err := page.Context(ctx).ElementR(dialog.class, dialog.regex)
+		switch err {
+		case context.DeadlineExceeded, &rod.ElementNotFoundError{}:
+			return nil
+		default:
+			if err != nil {
+				return err
+			}
+		}
 
-	if err == nil || errors.Is(err, context.DeadlineExceeded) {
-		log.Info().Msg("removed new UI tour dialog")
-		return nil
+		if err := el.Click(proto.InputMouseButtonLeft, 1); err != nil {
+			return err
+		}
+
+		log.Info().Msg("removed popup")
+		time.Sleep(5 * time.Second)
 	}
+}
 
-	return err
+func ClosePowerUpDialog(page *rod.Page, timeout time.Duration) error {
+	return closeDialog(page, powerUpDialog)
+}
+
+func CloseNewUIDialog(page *rod.Page, timeout time.Duration) error {
+	return closeDialog(page, newUIDialog)
 }
 
 // GoToList navigates the agent to the specified Apollo lead list. This function returns
@@ -55,11 +80,11 @@ func GoToList(page *rod.Page, listName string, timeout time.Duration) error {
 			MustWaitVisible()
 		accordians := page.MustElements(filterAccordion)
 
-		if len(accordians) != 12 {
+		if len(accordians) < 11 {
 			panic(fmt.Errorf("unexpected number of filter accordians: %d", len(accordians)))
 		}
 
-		listAccordian := accordians[1]
+		listAccordian := accordians[0]
 		class := listAccordian.MustAttribute("class")
 
 		if !strings.Contains(*class, openState) {
@@ -88,7 +113,7 @@ func GetPageInfo(page *rod.Page) (*PageInfo, error) {
 
 	log.Debug().Msg("getting page size info")
 	err = rod.Try(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
 		pageInfo := page.Context(ctx).MustElement(".zp_xAPpZ").MustWaitVisible().MustText()
@@ -169,6 +194,31 @@ func GoToNextPage(page *rod.Page) error {
 }
 
 // TODO
-func GoToPage(page *rod.Page, pageNumber int) error {
-	panic("TODO: GoToPage")
+func GoToPage(page *rod.Page, pageNumber int, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	err := rod.Try(func() {
+		page = page.Context(ctx)
+		page.MustElement(".zp_VTl3h.zp_xqxgc .zp_dJ2fA").MustWaitVisible()
+		inputs := page.MustElements(".zp_VTl3h.zp_xqxgc .zp_dJ2fA")
+
+		if len(inputs) < 2 {
+			panic("could not find page control switch")
+		}
+
+		inputs[1].MustClick()
+
+		listbox := page.MustElement("[role=listbox]").MustWaitVisible()
+		listbox.MustElement("a").MustWaitVisible()
+
+		pages := listbox.MustElements("a")
+		if len(pages) < pageNumber-1 {
+			panic("found too few page number option")
+		}
+
+		pages[pageNumber-1].MustClick()
+	})
+
+	return err
 }

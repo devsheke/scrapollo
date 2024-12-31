@@ -30,8 +30,8 @@ func (j *ScrapeJob) IsDoneForToday(dailyLimit int) bool {
 		return false
 	}
 
-	cond := time.Now().Before(j.startedAt.Get())
-	if cond && j.saved > dailyLimit {
+	cond := time.Now().Before(j.startedAt.Get().Add(24 * time.Hour))
+	if cond && j.saved >= dailyLimit {
 		j.Reset()
 		return true
 	}
