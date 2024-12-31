@@ -107,11 +107,11 @@ func LoginToApollo(
 
 	ok, err := isLoggedIn(page, scraper, timeout)
 	if err != nil {
-		return nil, err
+		return page, err
 	}
 
 	if !ok {
-		return nil, fmt.Errorf("failed to login due to unknown error")
+		return page, fmt.Errorf("failed to login due to unknown error")
 	}
 
 	return page, nil
