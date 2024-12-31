@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
+	"github.com/go-rod/rod/lib/proto"
 	"github.com/rs/zerolog/log"
 	"github.com/shadowbizz/apollo-crawler/internal/actions"
 	"github.com/shadowbizz/apollo-crawler/internal/io"
@@ -28,6 +29,18 @@ var (
 	// ErrorNoCredits indicates that the scraper has no more credits left to save leads.
 	ErrorNoCredits = errors.New("scraper credits have been exhauster")
 )
+
+var screenOverride = func() *proto.EmulationSetDeviceMetricsOverride {
+	width, height := 1920, 1080
+	return &proto.EmulationSetDeviceMetricsOverride{
+		DeviceScaleFactor: 2,
+		Width:             width,
+		Height:            height,
+		ScreenWidth:       &width,
+		ScreenHeight:      &height,
+		Mobile:            false,
+	}
+}
 
 // browserWrapper is an abstraction over the rod launcher and browser types.
 type browserWrapper struct {
@@ -62,6 +75,18 @@ func (b *browserWrapper) close() {
 		log.Error().Err(err).Msg("failed to close browser")
 	}
 	b.launcher.Cleanup()
+}
+
+func removeSideNav(page *rod.Page) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	el, err := page.Context(ctx).Element("#side-nav")
+	if errors.Is(err, &rod.ElementNotFoundError{}) || errors.Is(err, context.DeadlineExceeded) {
+		return nil
+	}
+
+	return el.Remove()
 }
 
 // _saveProgress saves the intermediary state of each ApolloAccount present
@@ -218,6 +243,10 @@ func (q *ScrapeRunner) saveLeads(job *ScrapeJob) (err error) {
 		return
 	}
 
+	if err := page.SetViewport(screenOverride()); err != nil {
+		return err
+	}
+
 	defer func() {
 		switch err {
 		case ErrorTargetReached, actions.ErrorListEnd, ErrorDailyLimit:
@@ -308,6 +337,10 @@ func (q *ScrapeRunner) saveLeads(job *ScrapeJob) (err error) {
 
 	err = actions.ClosePowerUpDialog(page, 5*time.Second)
 	if err != nil {
+		return err
+	}
+
+	if err := removeSideNav(page); err != nil {
 		return err
 	}
 
