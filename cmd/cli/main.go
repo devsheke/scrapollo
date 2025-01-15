@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/devsheke/scrapollo/internal/logging"
 	"github.com/spf13/cobra"
 )
 
@@ -38,7 +39,9 @@ var vpnConfigs, vpnCredentialFile, vpnArgs string
 var rootCmd = &cobra.Command{
 	Use:   APPNAME,
 	Short: "Save and extract leads from apollo.io",
-	Run:   func(cmd *cobra.Command, args []string) {},
+	Run: func(cmd *cobra.Command, args []string) {
+		logging.Init(debug)
+	},
 }
 
 func main() {
