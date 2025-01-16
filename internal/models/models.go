@@ -14,6 +14,12 @@
 
 package models
 
+import (
+	"time"
+
+	"github.com/go-rod/rod/lib/proto"
+)
+
 // Lead represents a lead from apollo.io.
 type Lead struct {
 	Name      string `json:"name"      csv:"name"`
@@ -39,12 +45,32 @@ type Account struct {
 	Target        int    `json:"target"         csv:"target"`
 	Credits       int    `json:"credits"        csv:"credits"`
 	CreditRefresh *Time  `json:"credit-refresh" csv:"credit-refresh"`
+	loginCookies  []*proto.NetworkCookie
+}
+
+func (a *Account) CheckCookieValidity() bool {
+	if len(a.loginCookies) == 0 {
+		return false
+	}
+
+	for _, cookie := range a.loginCookies {
+		expiry := cookie.Expires.Time()
+		if time.Now().After(cookie.Expires.Time()) && expiry.Year() != 1970 {
+			return false
+		}
+	}
+
+	return true
 }
 
 // CanScrape returns true if an [*Account] has enough credits to continue
 // scraping leads.
 func (a *Account) CanScrape() bool {
 	return a.Credits > 0
+}
+
+func (a *Account) GetLoginCookies() ([]*proto.NetworkCookie, bool) {
+	return a.loginCookies, len(a.loginCookies) > 0
 }
 
 // Increment increases the amount of leads saved by a specified amount.
@@ -55,6 +81,10 @@ func (a *Account) Increment(amount int) {
 // IsDone returns true if the [*Account] has saved the target number of leads.
 func (a *Account) IsDone() bool {
 	return a.Target == a.Saved
+}
+
+func (a *Account) SetLoginCookies(cookies []*proto.NetworkCookie) {
+	a.loginCookies = cookies
 }
 
 // UseCredits decreases the amount of credits available by a specified amount.
