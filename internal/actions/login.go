@@ -91,10 +91,7 @@ func ApolloLogin(browser *rod.Browser, acc *models.Account) (page *rod.Page, err
 	}
 
 	err = rod.Try(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		page := page.Context(ctx)
+		page := page.Timeout(30 * time.Second)
 		page.MustNavigate("https://app.apollo.io/#/login").MustWaitDOMStable()
 		page.MustElement("input[name=email]").MustInput(acc.Email)
 		page.MustElement("input[name=password]").MustInput(acc.Password)

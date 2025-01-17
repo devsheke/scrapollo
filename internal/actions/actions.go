@@ -75,11 +75,9 @@ func GetPageData(page *rod.Page, timeout time.Duration) (pd *PageData, err error
 
 	err = rod.Try(func() {
 		log.Debug().Msg("parsing page size information")
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
 
 		info := strings.Split(
-			page.Context(ctx).MustElement(".zp_xAPpZ").MustWaitVisible().MustText(),
+			page.Timeout(timeout).MustElement(".zp_xAPpZ").MustWaitVisible().MustText(),
 			" ",
 		)
 
@@ -100,10 +98,7 @@ func GetPageData(page *rod.Page, timeout time.Duration) (pd *PageData, err error
 
 	if errors.Is(err, context.DeadlineExceeded) {
 		err := rod.Try(func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			defer cancel()
-
-			page.Context(ctx).
+			page.Timeout(20*time.Second).
 				MustElementR(".zp_MVq1c", "No people match your criteria").
 				MustWaitVisible()
 		})
@@ -119,10 +114,12 @@ func GetPageData(page *rod.Page, timeout time.Duration) (pd *PageData, err error
 
 	err = rod.Try(func() {
 		log.Debug().Msg("getting page navigation information")
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
 
-		numText := page.Context(ctx).MustElement(".zp_jzp8p").MustWaitVisible().MustText()
+		numText := page.Timeout(20 * time.Second).
+			MustElement(".zp_jzp8p").
+			MustWaitVisible().
+			MustText()
+
 		if pd.Number, err = strconv.Atoi(numText); err != nil {
 			panic(err)
 		}
@@ -150,10 +147,7 @@ func GetPageData(page *rod.Page, timeout time.Duration) (pd *PageData, err error
 func GoToPage(page *rod.Page, pageNumber int, timeout time.Duration) error {
 	log.Debug().Int("number", pageNumber).Msg("navigating to page")
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	page = page.Context(ctx)
+	page = page.Timeout(timeout)
 	err := rod.Try(func() {
 		page.MustElement(".zp_VTl3h.zp_xqxgc .zp_dJ2fA").MustWaitVisible()
 
@@ -212,10 +206,7 @@ func LocateList(page *rod.Page, listName string, timeout time.Duration) error {
 			page.MustNavigate(peoplePageURL).MustWaitDOMStable()
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-
-		page := page.Context(ctx)
+		page := page.Timeout(timeout)
 		page.MustElement(filterAccordionElement).
 			MustWaitVisible()
 
