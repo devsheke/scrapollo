@@ -36,7 +36,7 @@ const (
 	JsonFileFormat FileFormat = ".csv"
 )
 
-func saveJson(file *os.File, records []any) error {
+func saveJson(file *os.File, records any) error {
 	b, err := json.MarshalIndent(records, "", "\t")
 	if err != nil {
 		return err
@@ -50,7 +50,7 @@ func saveJson(file *os.File, records []any) error {
 // SaveRecords writes the provided records to the given file. The desired [FileFormat]
 // is detected from the provided file's extension. If the extension is not supported,
 // [ErrorUnsupportedFileFormat] is returned.
-func SaveRecords(file string, records []any) error {
+func SaveRecords(file string, records any) error {
 	f, err := os.OpenFile(file, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
