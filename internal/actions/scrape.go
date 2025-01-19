@@ -26,14 +26,17 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// ApolloTab represents the tabs on the Apollo 'People' page.
 type ApolloTab string
 
+// The names of the tabs found on the Apollo 'People' page.
 const (
 	TotalTab  ApolloTab = "Total"
 	NetNewTab ApolloTab = "Net New"
 	SavedTab  ApolloTab = "Saved"
 )
 
+// Select selects the given [ApolloTab] on the page.
 func (tab ApolloTab) Select(page *rod.Page) (err error) {
 	log.Debug().Str("tab", string(tab)).Msg("selecting tab")
 
@@ -59,6 +62,7 @@ func randomSleep() {
 	time.Sleep(time.Duration(sleep) * time.Millisecond)
 }
 
+// SaveLeads saves all available leads on the current page to the specified list on Apollo.
 func SaveLeads(page *rod.Page, listName string, timeout time.Duration) error {
 	log.Info().Str("list", listName).Msg("saving leads")
 	err := rod.Try(func() {
@@ -92,6 +96,7 @@ func SaveLeads(page *rod.Page, listName string, timeout time.Duration) error {
 //go:embed scripts/scrape.js
 var scrapeScript string
 
+// ScrapeLeads returns all available leads on the current page (if they are found).
 func ScrapeLeads(page *rod.Page, timeout time.Duration) ([]*models.Lead, error) {
 	log.Debug().Msg("scraping leads")
 
