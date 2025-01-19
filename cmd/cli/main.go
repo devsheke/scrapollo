@@ -35,7 +35,7 @@ var (
 	dailyLimit, timeout                    int
 	csvOut, jsonOut                        bool
 	debug, fetchCredits, headless, stealth bool
-	input, outputDir, tab                  string
+	cookieFile, input, outputDir, tab      string
 )
 
 var vpnConfigs, vpnCredentialFile, vpnArgs string
@@ -60,6 +60,10 @@ var rootCmd = &cobra.Command{
 			runner.Stealth(stealth),
 			runner.Tab(tab),
 			runner.Timeout(time.Duration(timeout) * time.Second),
+		}
+
+		if cookieFile != "" {
+			runnerOpts = append(runnerOpts, runner.CookieFile(cookieFile))
 		}
 
 		if csvOut {
@@ -93,6 +97,9 @@ func init() {
 
 	rootCmd.Flags().
 		StringVarP(&outputDir, "output-dir", "o", "./scrape-results", "specify path to output directory")
+
+	rootCmd.Flags().
+		StringVarP(&cookieFile, "cookie-file", "c", "", "specify path to file containing cookies for your Apollo accounts")
 
 	rootCmd.Flags().
 		IntVarP(&dailyLimit, "daily-limit", "d", 500, "daily limit for saving leads")
