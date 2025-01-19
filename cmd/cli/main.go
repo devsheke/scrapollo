@@ -17,8 +17,12 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/devsheke/scrapollo/internal/io"
 	"github.com/devsheke/scrapollo/internal/logging"
+	"github.com/devsheke/scrapollo/internal/models"
+	"github.com/devsheke/scrapollo/internal/runner"
 	"github.com/spf13/cobra"
 )
 
@@ -41,6 +45,37 @@ var rootCmd = &cobra.Command{
 	Short: "Save and extract leads from apollo.io",
 	Run: func(cmd *cobra.Command, args []string) {
 		logging.Init(debug)
+
+		var accounts []*models.Account
+		if err := io.ReadRecords(input, &accounts); err != nil {
+			exitOnError(err, 1)
+		}
+
+		runnerOpts := []runner.RunnerOpt{
+			runner.Dailyimit(dailyLimit),
+			runner.Debug(debug),
+			runner.FetchCredits(fetchCredits),
+			runner.Headless(headless),
+			runner.OutputDir(outputDir),
+			runner.Stealth(stealth),
+			runner.Tab(tab),
+			runner.Timeout(time.Duration(timeout) * time.Second),
+		}
+
+		if csvOut {
+			runnerOpts = append(runnerOpts, runner.CsvOutput())
+		} else if jsonOut {
+			runnerOpts = append(runnerOpts, runner.JsonOutput())
+		}
+
+		r, err := runner.New(accounts, runnerOpts...)
+		if err != nil {
+			exitOnError(err, 1)
+		}
+
+		if err := r.Start(); err != nil {
+			exitOnError(err, 1)
+		}
 	},
 }
 
@@ -100,4 +135,9 @@ func init() {
 
 	rootCmd.MarkFlagsMutuallyExclusive("csv", "json")
 	rootCmd.MarkFlagsOneRequired("csv", "json")
+}
+
+func exitOnError(err error, code int) {
+	fmt.Fprintln(os.Stderr, "Error:", err)
+	os.Exit(code)
 }
