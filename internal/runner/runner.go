@@ -146,6 +146,13 @@ func SaveProgress(b bool) RunnerOpt {
 	}
 }
 
+// Stealth is a [RunnerOpt] func that specifies whether or not the [Runner] launches the browser in stealth mode.
+func Stealth(s bool) RunnerOpt {
+	return func(r *Runner) {
+		r.stealth = s
+	}
+}
+
 // Timeout is a [RunnerOpt] func that configures the [Runner]'s time limit for each browser action.
 func Timeout(t time.Duration) RunnerOpt {
 	return func(r *Runner) {
