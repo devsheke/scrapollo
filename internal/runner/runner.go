@@ -15,6 +15,7 @@
 package runner
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -28,12 +29,11 @@ import (
 // Runner is a type that manages and orchestrates the process of scraping leads from Apollo.
 type Runner struct {
 	annoyances                                           []*actions.Annoyance
-	cookies                                              map[string][]*proto.NetworkCookie
 	debug, fetchCredits, headless, saveProgress, stealth bool
 	jobs                                                 *queue
 	limit                                                int
 	outputFormat                                         io.FileFormat
-	outputDir, errorDir                                  string
+	cookieFile, outputDir, errorDir                      string
 	tab                                                  actions.ApolloTab
 	timeout                                              time.Duration
 }
@@ -66,6 +66,12 @@ func Annoyances(values []string) RunnerOpt {
 			}
 		}
 		r.annoyances = annoyances
+	}
+}
+
+func CookieFile(file string) RunnerOpt {
+	return func(r *Runner) {
+		r.cookieFile = file
 	}
 }
 
@@ -166,7 +172,6 @@ func New(accounts []*models.Account, opts ...RunnerOpt) (*Runner, error) {
 		limit:     500,
 		timeout:   60 * time.Second,
 		outputDir: "./apollo-output",
-		cookies:   make(map[string][]*proto.NetworkCookie, len(accounts)),
 	}
 
 	for _, optFn := range opts {
@@ -181,6 +186,19 @@ func New(accounts []*models.Account, opts ...RunnerOpt) (*Runner, error) {
 
 		if job.acc.Timeout == nil {
 			job.acc.Timeout = &models.Time{}
+		}
+	}
+
+	if r.cookieFile != "" {
+		var accCookies map[string][]*proto.NetworkCookie
+		if err := io.ReadRecords(r.cookieFile, &accCookies); err != nil {
+			return nil, fmt.Errorf("failed to read cookie file: %v", err)
+		}
+
+		for _, job := range r.jobs.iter() {
+			if cookies, ok := accCookies[job.acc.Email]; ok {
+				job.acc.SetLoginCookies(cookies)
+			}
 		}
 	}
 
