@@ -22,7 +22,7 @@ import (
 	"github.com/devsheke/scrapollo/internal/models"
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
-	"github.com/go-rod/stealth"
+	rodStealth "github.com/go-rod/stealth"
 	"github.com/rs/zerolog/log"
 )
 
@@ -71,8 +71,18 @@ func isLoggedIn(
 }
 
 // ApolloLogin is a page action that logs into apollo.io with the provided [*models.Account]'s credentials.
-func ApolloLogin(browser *rod.Browser, acc *models.Account) (page *rod.Page, err error) {
-	page, err = stealth.Page(browser)
+// If arg: stealth is set to true, the resulting page will be launched in stealth mode.
+func ApolloLogin(
+	browser *rod.Browser,
+	acc *models.Account,
+	stealth bool,
+) (page *rod.Page, err error) {
+	if stealth {
+		page, err = rodStealth.Page(browser)
+	} else {
+		page, err = browser.Page(proto.TargetCreateTarget{})
+	}
+
 	if err != nil {
 		return
 	}

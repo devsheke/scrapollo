@@ -28,10 +28,10 @@ const (
 )
 
 var (
-	dailyLimit, timeout           int
-	csvOut, jsonOut               bool
-	debug, fetchCredits, headless bool
-	input, outputDir, tab         string
+	dailyLimit, timeout                    int
+	csvOut, jsonOut                        bool
+	debug, fetchCredits, headless, stealth bool
+	input, outputDir, tab                  string
 )
 
 var vpnConfigs, vpnCredentialFile, vpnArgs string
@@ -71,6 +71,9 @@ func init() {
 		BoolVarP(&fetchCredits, "fetch-credits", "f", false, "fetch credit usage for apollo accounts")
 
 	rootCmd.Flags().BoolVarP(&headless, "headless", "H", true, "run browser in headless mode")
+
+	rootCmd.Flags().
+		BoolVar(&stealth, "stealth", false, "specify whether or not to inject stealth script at every page load")
 
 	rootCmd.Flags().BoolVar(&csvOut, "csv", false, "save output files in CSV format")
 
