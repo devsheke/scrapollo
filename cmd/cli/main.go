@@ -17,8 +17,12 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/devsheke/scrapollo/internal/io"
 	"github.com/devsheke/scrapollo/internal/logging"
+	"github.com/devsheke/scrapollo/internal/models"
+	"github.com/devsheke/scrapollo/internal/runner"
 	"github.com/spf13/cobra"
 )
 
@@ -28,10 +32,10 @@ const (
 )
 
 var (
-	dailyLimit, timeout           int
-	csvOut, jsonOut               bool
-	debug, fetchCredits, headless bool
-	input, outputDir, tab         string
+	dailyLimit, timeout                    int
+	csvOut, jsonOut                        bool
+	debug, fetchCredits, headless, stealth bool
+	input, outputDir, tab                  string
 )
 
 var vpnConfigs, vpnCredentialFile, vpnArgs string
@@ -41,6 +45,37 @@ var rootCmd = &cobra.Command{
 	Short: "Save and extract leads from apollo.io",
 	Run: func(cmd *cobra.Command, args []string) {
 		logging.Init(debug)
+
+		var accounts []*models.Account
+		if err := io.ReadRecords(input, &accounts); err != nil {
+			exitOnError(err, 1)
+		}
+
+		runnerOpts := []runner.RunnerOpt{
+			runner.Dailyimit(dailyLimit),
+			runner.Debug(debug),
+			runner.FetchCredits(fetchCredits),
+			runner.Headless(headless),
+			runner.OutputDir(outputDir),
+			runner.Stealth(stealth),
+			runner.Tab(tab),
+			runner.Timeout(time.Duration(timeout) * time.Second),
+		}
+
+		if csvOut {
+			runnerOpts = append(runnerOpts, runner.CsvOutput())
+		} else if jsonOut {
+			runnerOpts = append(runnerOpts, runner.JsonOutput())
+		}
+
+		r, err := runner.New(accounts, runnerOpts...)
+		if err != nil {
+			exitOnError(err, 1)
+		}
+
+		if err := r.Start(); err != nil {
+			exitOnError(err, 1)
+		}
 	},
 }
 
@@ -72,6 +107,9 @@ func init() {
 
 	rootCmd.Flags().BoolVarP(&headless, "headless", "H", true, "run browser in headless mode")
 
+	rootCmd.Flags().
+		BoolVar(&stealth, "stealth", false, "specify whether or not to inject stealth script at every page load")
+
 	rootCmd.Flags().BoolVar(&csvOut, "csv", false, "save output files in CSV format")
 
 	rootCmd.Flags().BoolVar(&jsonOut, "json", false, "save output files in JSON format")
@@ -97,4 +135,9 @@ func init() {
 
 	rootCmd.MarkFlagsMutuallyExclusive("csv", "json")
 	rootCmd.MarkFlagsOneRequired("csv", "json")
+}
+
+func exitOnError(err error, code int) {
+	fmt.Fprintln(os.Stderr, "Error:", err)
+	os.Exit(code)
 }

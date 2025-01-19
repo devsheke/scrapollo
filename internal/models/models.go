@@ -45,6 +45,7 @@ type Account struct {
 	Target        int    `json:"target"         csv:"target"`
 	Credits       int    `json:"credits"        csv:"credits"`
 	CreditRefresh *Time  `json:"credit-refresh" csv:"credit-refresh"`
+	Timeout       *Time  `json:"timeout"        csv:"timeout"`
 	loginCookies  []*proto.NetworkCookie
 }
 

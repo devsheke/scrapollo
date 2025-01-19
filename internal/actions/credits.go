@@ -15,7 +15,6 @@
 package actions
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -40,10 +39,7 @@ func FetchCreditUsage(
 	err = rod.Try(func() {
 		log.Info().Msg("fetching credit data")
 
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-
-		page := page.Context(ctx)
+		page := page.Timeout(timeout)
 		creditElem := ".zp_ZlMia"
 		page.MustNavigate("https://app.apollo.io/#/settings/credits/current").
 			MustElement(creditElem).
@@ -82,10 +78,7 @@ func FetchCreditUsage(
 	err = rod.Try(func() {
 		log.Info().Msg("fetching renewal data")
 
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-
-		page := page.Context(ctx)
+		page := page.Timeout(timeout)
 		if text := page.MustElement(".zp_jtf9O").MustWaitVisible().MustText(); len(text) < 30 {
 			panic(fmt.Errorf("unexpected credit renewal string: %q", text))
 		} else {

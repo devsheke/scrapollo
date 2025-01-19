@@ -22,9 +22,13 @@ import (
 	"github.com/devsheke/scrapollo/internal/models"
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
-	"github.com/go-rod/stealth"
+	rodStealth "github.com/go-rod/stealth"
 	"github.com/rs/zerolog/log"
 )
+
+// ErrorSecurityChallenge is returned when a Cloudflare Turnstile captcha challenge has been encountered
+// at the time of logging in.
+var ErrorSecurityChallenge = errors.New("encountered a cloudflare turnstile challenge")
 
 func isLoggedIn(
 	page *rod.Page,
@@ -66,10 +70,19 @@ func isLoggedIn(
 	}
 }
 
-// ApolloLogin is a page action that logs into apollo.io with the specified
-// [*models.Account]'s credentials.
-func ApolloLogin(browser *rod.Browser, acc *models.Account) (page *rod.Page, err error) {
-	page, err = stealth.Page(browser)
+// ApolloLogin is a page action that logs into apollo.io with the provided [*models.Account]'s credentials.
+// If arg: stealth is set to true, the resulting page will be launched in stealth mode.
+func ApolloLogin(
+	browser *rod.Browser,
+	acc *models.Account,
+	stealth bool,
+) (page *rod.Page, err error) {
+	if stealth {
+		page, err = rodStealth.Page(browser)
+	} else {
+		page, err = browser.Page(proto.TargetCreateTarget{})
+	}
+
 	if err != nil {
 		return
 	}
@@ -91,10 +104,7 @@ func ApolloLogin(browser *rod.Browser, acc *models.Account) (page *rod.Page, err
 	}
 
 	err = rod.Try(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		page := page.Context(ctx)
+		page := page.Timeout(30 * time.Second)
 		page.MustNavigate("https://app.apollo.io/#/login").MustWaitDOMStable()
 		page.MustElement("input[name=email]").MustInput(acc.Email)
 		page.MustElement("input[name=password]").MustInput(acc.Password)
@@ -103,6 +113,15 @@ func ApolloLogin(browser *rod.Browser, acc *models.Account) (page *rod.Page, err
 
 	if err != nil {
 		return page, err
+	}
+
+	err = rod.Try(func() {
+		page.Timeout(15 * time.Second).MustElement("#securityChallenge")
+	})
+
+	// TODO: add away to bypass the cloudflare challenge.
+	if err == nil {
+		return page, ErrorSecurityChallenge
 	}
 
 	ok, err = isLoggedIn(page, acc, 60*time.Second)

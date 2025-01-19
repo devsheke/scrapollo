@@ -78,12 +78,9 @@ func RemoveAnnoyance(page *rod.Page, annoyance *Annoyance, timeout time.Duration
 	log.Debug().Str("annoyance", annoyance.Name).Msg("attempting to remove annoyance")
 
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-
 		var element *rod.Element
 		err := rod.Try(func() {
-			page = page.Context(ctx)
+			page = page.Timeout(timeout)
 			if annoyance.Regex != "" {
 				element = page.MustElementR(annoyance.Selector, annoyance.Regex).MustWaitVisible()
 			} else {

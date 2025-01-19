@@ -15,7 +15,6 @@
 package actions
 
 import (
-	"context"
 	_ "embed"
 	"fmt"
 	"math/rand/v2"
@@ -27,14 +26,17 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// ApolloTab represents the tabs on the Apollo 'People' page.
 type ApolloTab string
 
+// The names of the tabs found on the Apollo 'People' page.
 const (
 	TotalTab  ApolloTab = "Total"
 	NetNewTab ApolloTab = "Net New"
 	SavedTab  ApolloTab = "Saved"
 )
 
+// Select selects the given [ApolloTab] on the page.
 func (tab ApolloTab) Select(page *rod.Page) (err error) {
 	log.Debug().Str("tab", string(tab)).Msg("selecting tab")
 
@@ -44,11 +46,8 @@ func (tab ApolloTab) Select(page *rod.Page) (err error) {
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-
 	err = rod.Try(func() {
-		page := page.Context(ctx)
+		page := page.Timeout(30 * time.Second)
 		page.MustElementR(".zp_PfDqP", fmt.Sprintf(`/%s/`, tab)).MustWaitVisible().MustClick()
 	})
 
@@ -63,13 +62,11 @@ func randomSleep() {
 	time.Sleep(time.Duration(sleep) * time.Millisecond)
 }
 
+// SaveLeads saves all available leads on the current page to the specified list on Apollo.
 func SaveLeads(page *rod.Page, listName string, timeout time.Duration) error {
 	log.Info().Str("list", listName).Msg("saving leads")
 	err := rod.Try(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-
-		page := page.Context(ctx)
+		page := page.Timeout(timeout)
 		page.MustElement(".zp_wMhzv").MustWaitVisible().MustClick()
 		page.MustElement("button[type=submit].zp_qe0Li.zp_FG3Vz.zp_rsjqe.zp_h2EIO").
 			MustWaitVisible().
@@ -99,14 +96,12 @@ func SaveLeads(page *rod.Page, listName string, timeout time.Duration) error {
 //go:embed scripts/scrape.js
 var scrapeScript string
 
+// ScrapeLeads returns all available leads on the current page (if they are found).
 func ScrapeLeads(page *rod.Page, timeout time.Duration) ([]*models.Lead, error) {
 	log.Debug().Msg("scraping leads")
 
 	err := rod.Try(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-
-		page.Context(ctx).MustElement(".zp_tFLCQ .zp_hWv1I").MustWaitVisible()
+		page.Timeout(timeout).MustElement(".zp_tFLCQ .zp_hWv1I").MustWaitVisible()
 	})
 
 	if err != nil {
@@ -115,11 +110,8 @@ func ScrapeLeads(page *rod.Page, timeout time.Duration) ([]*models.Lead, error) 
 
 	var leads []*models.Lead
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
 	log.Debug().Msg("running scrape script")
-	result, err := page.Context(ctx).Eval(scrapeScript)
+	result, err := page.Timeout(30 * time.Second).Eval(scrapeScript)
 	if err != nil {
 		return nil, err
 	}

@@ -61,7 +61,7 @@ func (t *Time) Increment(dur time.Duration) {
 }
 
 // Reset resets the underlying [time.Time] to a zero value.
-func (t *Time) Reset(_t time.Time) {
+func (t *Time) Reset() {
 	t.valid = false
 	t.time = time.Time{}
 }
