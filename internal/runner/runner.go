@@ -69,6 +69,8 @@ func Annoyances(values []string) RunnerOpt {
 	}
 }
 
+// CookieFile is a [RunnerOpt] func that specifies the path to a file containing login cookies
+// for the provided Apollo accounts.
 func CookieFile(file string) RunnerOpt {
 	return func(r *Runner) {
 		r.cookieFile = file
