@@ -128,7 +128,7 @@ func (r *Runner) newScrapingPage(page *rod.Page, bw *browserWrapper, acc *models
 		return err
 	}
 
-	newPage, err := actions.ApolloLogin(bw.browser, acc, r.stealth)
+	newPage, err := actions.ApolloLogin(bw.browser, acc, r.timeout, r.stealth)
 	*page = *newPage
 
 	if err != nil {
@@ -220,7 +220,7 @@ func (r *Runner) saveLeads(job *job) (err error) {
 	}
 	defer bw.close()
 
-	page, err := actions.ApolloLogin(bw.browser, job.acc, r.stealth)
+	page, err := actions.ApolloLogin(bw.browser, job.acc, r.timeout, r.stealth)
 	if err != nil {
 		return err
 	}

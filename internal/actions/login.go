@@ -75,6 +75,7 @@ func isLoggedIn(
 func ApolloLogin(
 	browser *rod.Browser,
 	acc *models.Account,
+	timeout time.Duration,
 	stealth bool,
 ) (page *rod.Page, err error) {
 	if stealth {
@@ -89,7 +90,7 @@ func ApolloLogin(
 
 	log.Info().Str("account", acc.Email).Msg("logging in")
 
-	ok, err := isLoggedIn(page, acc, 60*time.Second)
+	ok, err := isLoggedIn(page, acc, 30*time.Second)
 	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		return
 	} else if ok {
@@ -104,7 +105,7 @@ func ApolloLogin(
 	}
 
 	err = rod.Try(func() {
-		page := page.Timeout(30 * time.Second)
+		page := page.Timeout(timeout)
 		page.MustNavigate("https://app.apollo.io/#/login").MustWaitDOMStable()
 		page.MustElement("input[name=email]").MustInput(acc.Email)
 		page.MustElement("input[name=password]").MustInput(acc.Password)
@@ -124,7 +125,7 @@ func ApolloLogin(
 		return page, ErrorSecurityChallenge
 	}
 
-	ok, err = isLoggedIn(page, acc, 60*time.Second)
+	ok, err = isLoggedIn(page, acc, timeout)
 	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		return
 	} else if ok {
