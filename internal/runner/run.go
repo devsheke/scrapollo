@@ -27,6 +27,7 @@ import (
 	"github.com/devsheke/scrapollo/internal/models"
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
+	"github.com/go-rod/rod/lib/proto"
 	"github.com/rs/zerolog/log"
 )
 
@@ -75,17 +76,31 @@ func (bw *browserWrapper) close() error {
 	return nil
 }
 
-const progressFilePrefix string = "scrapollo-progress"
+const (
+	progressFilePrefix     string = "scrapollo-progress"
+	accountCookiesFilename string = "scrapollo-cookies.json"
+)
 
 func (r *Runner) _saveProgress() error {
-	progressFile := filepath.Join(r.outputDir, progressFilePrefix+string(r.outputFormat))
-
-	log.Debug().Str("file", progressFile).Msg("saving progress")
-
 	accs := make([]*models.Account, 0, r.jobs.Len())
+	accCookies := make(map[string][]*proto.NetworkCookie, r.jobs.Len())
+
 	for _, job := range r.jobs.iter() {
+		if cookies, ok := job.acc.GetLoginCookies(); ok {
+			accCookies[job.acc.Email] = cookies
+		}
 		accs = append(accs, job.acc)
 	}
+
+	cookiesFile := filepath.Join(r.outputDir, accountCookiesFilename)
+	log.Debug().Str("file", cookiesFile).Msg("saving cookies")
+
+	if err := io.SaveRecords(cookiesFile, accCookies); err != nil {
+		return err
+	}
+
+	progressFile := filepath.Join(r.outputDir, progressFilePrefix+string(r.outputFormat))
+	log.Debug().Str("file", progressFile).Msg("saving progress")
 
 	return io.SaveRecords(progressFile, accs)
 }
@@ -113,7 +128,7 @@ func (r *Runner) newScrapingPage(page *rod.Page, bw *browserWrapper, acc *models
 		return err
 	}
 
-	newPage, err := actions.ApolloLogin(bw.browser, acc, r.stealth)
+	newPage, err := actions.ApolloLogin(bw.browser, acc, r.timeout, r.stealth)
 	*page = *newPage
 
 	if err != nil {
@@ -205,7 +220,7 @@ func (r *Runner) saveLeads(job *job) (err error) {
 	}
 	defer bw.close()
 
-	page, err := actions.ApolloLogin(bw.browser, job.acc, r.stealth)
+	page, err := actions.ApolloLogin(bw.browser, job.acc, r.timeout, r.stealth)
 	if err != nil {
 		return err
 	}

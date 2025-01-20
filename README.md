@@ -8,6 +8,7 @@ A CLI application that scrapes leads off of [apollo.io](https://apollo.io).
 scrapollo [flags]
 
 Flags:
+  -c, --cookie-file string       specify path to file containing cookies for your Apollo accounts
       --csv                      save output files in CSV format
   -d, --daily-limit int          daily limit for saving leads (default 500)
       --debug                    print debugging information
