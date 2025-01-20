@@ -52,6 +52,8 @@ func (e ErrorVpnFailure) Error() string {
 	return fmt.Sprintf("openvpn failed to run: stdout: %q; stderr: %q", e.stdout, e.stderr)
 }
 
+// Start spawns an OpenVPN process with the provided configuration, credentials and arguments and returns
+// [*cmd.Cmd] and [<-chan cmd.Status] for controlling and monitoring the spawned process.
 func Start(config, auth, args string, timeout time.Duration) (*cmd.Cmd, <-chan cmd.Status, error) {
 	log.Debug().Str("config", config).Msg("starting openvpn")
 
@@ -108,18 +110,17 @@ func Start(config, auth, args string, timeout time.Duration) (*cmd.Cmd, <-chan c
 	}
 }
 
-func Stop(process *cmd.Cmd) error {
+// Stop is a function which attempts to stop the provided OpenVPN process. ErrorNoVpnProcess is
+// returned if there is no process found matching the details of the provided process.
+func Stop(process *cmd.Cmd) (err error) {
 	log.Debug().Msg("stopping openvpn")
 
 	defer func() {
-		var err error
 		if process != nil {
-			err = exec.Command("kill", fmt.Sprintf("%d", process.Status().PID)).Run()
-		} else {
-			err = exec.Command("kill", "openvpn").Run()
-		}
-		if err != nil {
-			log.Warn().Err(err).Msg("failed to kill openvpn")
+			err = errors.Join(
+				err,
+				exec.Command("kill", fmt.Sprintf("%d", process.Status().PID)).Run(),
+			)
 		}
 	}()
 
@@ -134,9 +135,11 @@ func Stop(process *cmd.Cmd) error {
 		return err
 	}
 
-	return nil
+	return
 }
 
+// Restart is a function which attempts to restart the OpenVPN process with the provided configuration,
+// credentials and arguments.
 func Restart(
 	process *cmd.Cmd,
 	config, auth, args string,
