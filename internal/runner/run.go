@@ -25,6 +25,7 @@ import (
 	"github.com/devsheke/scrapollo/internal/actions"
 	"github.com/devsheke/scrapollo/internal/io"
 	"github.com/devsheke/scrapollo/internal/models"
+	"github.com/devsheke/scrapollo/pkg/openvpn-go"
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
@@ -214,6 +215,33 @@ func (r *Runner) scrapeLeads(page *rod.Page, bw *browserWrapper, job *job) error
 }
 
 func (r *Runner) saveLeads(job *job) (err error) {
+	if r.vpn != nil && job.acc.VpnFile != "" {
+		// calling restart here to make sure any existing openvpn process is stopped.
+		err = r.vpn.Restart(job.acc.VpnFile)
+		if err != nil && !errors.Is(err, openvpn.ErrorNoVpnProcess) {
+			var newConfig string
+			for retries := 0; retries < 10; retries++ {
+				newConfig, err = r.vpn.Backup()
+				if err == nil {
+					job.acc.VpnFile = newConfig
+					break
+				}
+			}
+		}
+
+		if err != nil {
+			return
+		}
+	}
+
+	defer func() {
+		if r.vpn != nil {
+			if err := r.vpn.Stop(); err != nil && !errors.Is(err, openvpn.ErrorNoVpnProcess) {
+				log.Warn().Err(err).Msg("failed to stop vpn")
+			}
+		}
+	}()
+
 	bw, err := newBrowserWrapper(r.headless)
 	if err != nil {
 		return err
@@ -384,6 +412,13 @@ func unwrapError(err error) error {
 
 func (r *Runner) Start() error {
 	var timeoutSkip int
+
+	if r.vpn != nil {
+		for _, job := range r.jobs.iter() {
+			r.vpn.UseConfig(job.acc.VpnFile)
+		}
+	}
+
 	for {
 		if r.jobs.isEmpty() {
 			log.Info().Msg("finished all scraping jobs")

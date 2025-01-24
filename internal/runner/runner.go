@@ -23,6 +23,7 @@ import (
 	"github.com/devsheke/scrapollo/internal/actions"
 	"github.com/devsheke/scrapollo/internal/io"
 	"github.com/devsheke/scrapollo/internal/models"
+	"github.com/devsheke/scrapollo/internal/openvpn"
 	"github.com/go-rod/rod/lib/proto"
 )
 
@@ -36,6 +37,7 @@ type Runner struct {
 	cookieFile, outputDir, errorDir                      string
 	tab                                                  actions.ApolloTab
 	timeout                                              time.Duration
+	vpn                                                  *openvpn.Manager
 }
 
 const (
@@ -165,6 +167,13 @@ func Stealth(s bool) RunnerOpt {
 func Timeout(t time.Duration) RunnerOpt {
 	return func(r *Runner) {
 		r.timeout = t
+	}
+}
+
+// VpnManager is a [RunnerOpt] func that configures the [Runner] to utilise OpenVPN for scraping leads.
+func VpnManager(v *openvpn.Manager) RunnerOpt {
+	return func(r *Runner) {
+		r.vpn = v
 	}
 }
 
