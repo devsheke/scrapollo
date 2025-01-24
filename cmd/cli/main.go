@@ -78,6 +78,8 @@ var rootCmd = &cobra.Command{
 			if err != nil {
 				exitOnError(err, 1)
 			}
+
+			runnerOpts = append(runnerOpts, runner.VpnManager(vpn))
 		}
 
 		r, err := runner.New(accounts, runnerOpts...)
