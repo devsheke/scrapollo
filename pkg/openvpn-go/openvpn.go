@@ -38,14 +38,14 @@ var (
 type (
 	// ErrorVpnTimedOut is returned when the OpenVPN proccess doesn't launch within the
 	// specified timeout.
-	ErrorVpnTimedOut struct{ msg string }
+	ErrorVpnTimedOut struct{ Msg string }
 
 	// ErrorVpnFailure is returned when the OpenVPN process fails to start-up.
 	ErrorVpnFailure struct{ stdout, stderr string }
 )
 
 func (e ErrorVpnTimedOut) Error() string {
-	return fmt.Sprintf("openvpn timed out: %s", e.msg)
+	return fmt.Sprintf("openvpn timed out: %s", e.Msg)
 }
 
 func (e ErrorVpnFailure) Error() string {
@@ -76,7 +76,7 @@ func Start(config, auth, args string, timeout time.Duration) (*cmd.Cmd, <-chan c
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, nil, ErrorVpnTimedOut{msg: strings.Join(stdoutStack, "\n")}
+			return nil, nil, ErrorVpnTimedOut{Msg: strings.Join(stdoutStack, "\n")}
 
 		case stdout := <-process.Stdout:
 			if strings.Contains(stdout, "Initialization Sequence Completed") {
