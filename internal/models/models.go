@@ -40,7 +40,7 @@ type Account struct {
 	Password      string `json:"password"       csv:"password"`
 	URL           string `json:"url"            csv:"url"`
 	List          string `json:"list"           csv:"list"`
-	VPNFile       string `json:"vpn-file"       csv:"vpn-file"`
+	VpnFile       string `json:"vpn-file"       csv:"vpn-file"`
 	Saved         int    `json:"saved"          csv:"saved"`
 	Target        int    `json:"target"         csv:"target"`
 	Credits       int    `json:"credits"        csv:"credits"`

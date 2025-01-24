@@ -22,6 +22,7 @@ import (
 	"github.com/devsheke/scrapollo/internal/io"
 	"github.com/devsheke/scrapollo/internal/logging"
 	"github.com/devsheke/scrapollo/internal/models"
+	"github.com/devsheke/scrapollo/internal/openvpn"
 	"github.com/devsheke/scrapollo/internal/runner"
 	"github.com/spf13/cobra"
 )
@@ -38,7 +39,7 @@ var (
 	cookieFile, input, outputDir, tab      string
 )
 
-var vpnConfigs, vpnCredentialFile, vpnArgs string
+var vpnConfigs, vpnCredentialsFile, vpnArgs string
 
 var rootCmd = &cobra.Command{
 	Use:   APPNAME,
@@ -70,6 +71,13 @@ var rootCmd = &cobra.Command{
 			runnerOpts = append(runnerOpts, runner.CsvOutput())
 		} else if jsonOut {
 			runnerOpts = append(runnerOpts, runner.JsonOutput())
+		}
+
+		if vpnConfigs != "" {
+			vpn, err := openvpn.NewManager(vpnConfigs, vpnCredentialsFile, vpnArgs)
+			if err != nil {
+				exitOnError(err, 1)
+			}
 		}
 
 		r, err := runner.New(accounts, runnerOpts...)
@@ -128,7 +136,7 @@ func init() {
 		StringVar(&vpnConfigs, "vpn-configs-dir", "", "path to directory containing OpenVPN configuration files")
 
 	rootCmd.Flags().
-		StringVar(&vpnCredentialFile, "vpn-credentials", "", "path to file containing OpenVPN credentials")
+		StringVar(&vpnCredentialsFile, "vpn-credentials", "", "path to file containing OpenVPN credentials")
 
 	rootCmd.Flags().
 		StringVar(&vpnArgs, "vpn-args", "", "specify arguments to use with OpenVPN")

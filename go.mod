@@ -3,6 +3,7 @@ module github.com/devsheke/scrapollo
 go 1.23.4
 
 require (
+	github.com/go-cmd/cmd v1.4.3 // indirect
 	github.com/go-rod/rod v0.116.2 // indirect
 	github.com/go-rod/stealth v0.4.9 // indirect
 	github.com/gocarina/gocsv v0.0.0-20240520201108-78e41c74b4b1 // indirect
